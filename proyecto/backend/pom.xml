@@ -23,7 +23,7 @@
         <resilience4j.version>2.4.0</resilience4j.version>
         <bucket4j.version>8.20.0</bucket4j.version>
         <caffeine.version>3.1.8</caffeine.version>
-        <lombok.version>1.18.46</lombok.version>
+        <lombok.version>1.18.48</lombok.version>
         <wiremock.version>3.10.0</wiremock.version>
     </properties>
 
@@ -135,6 +135,11 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
