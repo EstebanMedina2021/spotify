@@ -42,6 +42,14 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfException;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.filter.OncePerRequestFilter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.CsrfTokenRequestHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -67,8 +75,22 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepo)
                         .csrfTokenRequestHandler(csrfTokenRequestHandler())
+                        // Stateless: default strategy clears the XSRF cookie after each authenticated request.
+                        .sessionAuthenticationStrategy((authentication, request, response) -> { })
                         .ignoringRequestMatchers("/auth/login", "/auth/logout", "/auth/me")
                 )
+                // The CSRF token is deferred; reading it forces the XSRF-TOKEN cookie to be written.
+                .addFilterAfter(new OncePerRequestFilter() {
+                    @Override
+                    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                                    FilterChain chain) throws ServletException, IOException {
+                        CsrfToken token = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+                        if (token != null) {
+                            token.getToken();
+                        }
+                        chain.doFilter(request, response);
+                    }
+                }, CsrfFilter.class)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth

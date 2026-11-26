@@ -153,6 +153,39 @@ class SecurityIT {
                 .andExpect(jsonPath("$.codigo").value("CSRF_INVALID"));
     }
 
+    @Test
+    void anonymousRequest_issuesXsrfCookie() throws Exception {
+        MvcResult result = mockMvc.perform(get("/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andReturn();
+
+        Cookie xsrf = result.getResponse().getCookie("XSRF-TOKEN");
+        assertThat(xsrf).isNotNull();
+        assertThat(xsrf.getValue()).isNotBlank();
+    }
+
+    @Test
+    void postWithValidCsrf_doesNotClearXsrfCookie() throws Exception {
+        String accessToken = loginAndGetCookie();
+        String xsrfToken = "test-xsrf-token";
+
+        MvcResult result = mockMvc.perform(post("/lists")
+                        .cookie(new Cookie("access_token", accessToken),
+                                new Cookie("XSRF-TOKEN", xsrfToken))
+                        .header("X-XSRF-TOKEN", xsrfToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"CsrfKeep\",\"canciones\":[]}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        // Regression: the default CSRF session strategy used to expire the cookie here
+        Cookie after = result.getResponse().getCookie("XSRF-TOKEN");
+        if (after != null) {
+            assertThat(after.getMaxAge()).isNotZero();
+            assertThat(after.getValue()).isNotBlank();
+        }
+    }
+
     private String loginAndGetCookie() throws Exception {
         MvcResult result = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
