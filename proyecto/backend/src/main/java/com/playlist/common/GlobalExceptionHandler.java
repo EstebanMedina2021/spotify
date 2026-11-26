@@ -46,7 +46,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials(
             BadCredentialsException ex, HttpServletRequest request) {
-        return build(HttpStatus.UNAUTHORIZED, ErrorCodes.INVALID_CREDENTIALS, ex.getMessage(), request);
+        // Fixed Spanish text: the exception message is internal (and in English) and must not reach the client.
+        return build(HttpStatus.UNAUTHORIZED, ErrorCodes.INVALID_CREDENTIALS,
+                "Usuario o contraseña incorrectos", request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

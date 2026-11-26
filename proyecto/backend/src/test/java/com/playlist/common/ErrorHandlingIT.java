@@ -127,6 +127,14 @@ class ErrorHandlingIT {
     }
 
     @Test
+    void wrongPassword_returns401WithASpanishMessageAndNoInternalDetails() throws Exception {
+        mockMvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"demo\",\"password\":\"incorrecta\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.codigo").value("INVALID_CREDENTIALS"))
+                .andExpect(jsonPath("$.mensaje").value("Usuario o contraseña incorrectos"));
+    }
+    @Test
     void errorBodies_neverLeakInternals() throws Exception {
         mockMvc.perform(authed(get("/lists/a%07b")))
                 .andExpect(jsonPath("$.mensaje").value(org.hamcrest.Matchers.not(containsString("Exception"))))

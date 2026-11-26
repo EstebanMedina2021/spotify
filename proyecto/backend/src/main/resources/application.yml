@@ -51,7 +51,6 @@ spring:
     init:
       mode: always
       schema-locations: classpath:db/migration/V1__schema.sql
-      data-locations: classpath:db/migration/V2__seed_dev.sql
 
   h2:
     console:
