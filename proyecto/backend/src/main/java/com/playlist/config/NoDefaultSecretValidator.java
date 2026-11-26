@@ -24,6 +24,9 @@ public class NoDefaultSecretValidator implements InitializingBean {
     @Value("${GEMINI_AI_API_KEY:}")
     private String geminiKey;
 
+    @Value("${GEMINI_AI_MODEL:}")
+    private String geminiModel;
+
     @Value("${OLLAMA_BASE_URL:}")
     private String ollamaBaseUrl;
 
@@ -77,6 +80,11 @@ public class NoDefaultSecretValidator implements InitializingBean {
         if ("gemini".equalsIgnoreCase(aiProvider)) {
             if (geminiKey == null || geminiKey.isBlank()) {
                 throw new IllegalStateException("GEMINI_AI_API_KEY is required when AI_PROVIDER=gemini");
+            }
+            if (geminiModel == null || geminiModel.isBlank()) {
+                // Model ids are retired regularly; a stale default would only fail later, at the first request.
+                throw new IllegalStateException(
+                        "GEMINI_AI_MODEL is required when AI_PROVIDER=gemini (use a current id from the Gemini API docs)");
             }
         }
         if ("ollama".equalsIgnoreCase(aiProvider)) {

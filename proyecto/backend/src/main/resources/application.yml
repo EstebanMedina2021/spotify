@@ -12,14 +12,22 @@ spring:
         api-key: ${GEMINI_AI_API_KEY:}
         chat:
           options:
-            model: gemini-2.0-flash
+            # No default on purpose: Gemini model ids are retired regularly (gemini-2.0-flash was shut down
+            # on 2026-06-01). Set GEMINI_AI_MODEL to a current id; startup fails if it is missing.
+            model: ${GEMINI_AI_MODEL:}
             temperature: 0.7
+            # Caps the cost of every call (03 5.5 / estandar 1.6)
+            max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:512}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
         options:
-          model: llama3.2
+          model: ${OLLAMA_MODEL:llama3.2}
           temperature: 0.7
+          # Caps generation length (cost/latency); small local models can ramble
+          num-predict: ${AI_MAX_OUTPUT_TOKENS:512}
+          # Ollama constrains the output to valid JSON, which small models need to follow the schema
+          format: json
 
   application:
     name: playlist-api
@@ -99,7 +107,9 @@ app:
     issuer: ${JWT_ISSUER:playlist-api}
   ai:
     provider: ${AI_PROVIDER:mock}
-    timeout-seconds: 5
+    # HTTP read timeout and time limiter. 5 s suits hosted APIs; a small local model on CPU needs
+    # far more (e.g. AI_TIMEOUT_SECONDS=90).
+    timeout-seconds: ${AI_TIMEOUT_SECONDS:5}
     mock:
       scenario: OK
   cors:

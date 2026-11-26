@@ -69,6 +69,18 @@ class SecurityIT {
     }
 
     @Test
+    void recommendationsEndpoint_withoutCookie_returns401() throws Exception {
+        mockMvc.perform(get("/lists/cualquiera/recommendations"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.codigo").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void recommendationsEndpoint_withForgedToken_returns401() throws Exception {
+        mockMvc.perform(get("/lists/cualquiera/recommendations").cookie(new Cookie("access_token", "not.a.jwt")))
+                .andExpect(status().isUnauthorized());
+    }
+    @Test
     void tokenWithAlgNone_returns401() throws Exception {
         String header = Base64.getUrlEncoder().withoutPadding()
                 .encodeToString("{\"alg\":\"none\"}".getBytes(StandardCharsets.UTF_8));

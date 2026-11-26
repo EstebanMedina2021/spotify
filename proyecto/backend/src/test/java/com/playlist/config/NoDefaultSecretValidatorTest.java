@@ -78,6 +78,45 @@ class NoDefaultSecretValidatorTest {
                 .run(context -> assertThat(context).hasNotFailed());
     }
 
+    @Test
+    void geminiWithoutModel_failsToStart() {
+        contextRunner
+                .withPropertyValues(
+                        "app.jwt.secret=q8Zr1m0vKf3Yb7XcLw2PtN5uHa9GdEjS6iOoRkTyUe4VnMxBzCsAh1DlWgF8JpQ3",
+                        "app.jwt.expiration-minutes=15",
+                        "app.jwt.issuer=test",
+                        "app.ai.provider=gemini",
+                        "GEMINI_AI_API_KEY=present-for-the-test"
+                )
+                .run(context -> assertThat(context).getFailure().hasStackTraceContaining("GEMINI_AI_MODEL"));
+    }
+
+    @Test
+    void geminiWithKeyAndModel_startsNormally() {
+        contextRunner
+                .withPropertyValues(
+                        "app.jwt.secret=q8Zr1m0vKf3Yb7XcLw2PtN5uHa9GdEjS6iOoRkTyUe4VnMxBzCsAh1DlWgF8JpQ3",
+                        "app.jwt.expiration-minutes=15",
+                        "app.jwt.issuer=test",
+                        "app.ai.provider=gemini",
+                        "GEMINI_AI_API_KEY=present-for-the-test",
+                        "GEMINI_AI_MODEL=some-current-model"
+                )
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @Test
+    void ollamaNeedsNeitherKeyNorModelVariable() {
+        contextRunner
+                .withPropertyValues(
+                        "app.jwt.secret=q8Zr1m0vKf3Yb7XcLw2PtN5uHa9GdEjS6iOoRkTyUe4VnMxBzCsAh1DlWgF8JpQ3",
+                        "app.jwt.expiration-minutes=15",
+                        "app.jwt.issuer=test",
+                        "app.ai.provider=ollama",
+                        "OLLAMA_BASE_URL=http://localhost:11434"
+                )
+                .run(context -> assertThat(context).hasNotFailed());
+    }
     @Configuration
     @EnableConfigurationProperties(JwtProperties.class)
     static class TestConfig {
