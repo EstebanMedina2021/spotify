@@ -67,9 +67,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrity(
             DataIntegrityViolationException ex, HttpServletRequest request) {
-        log.warn("Data integrity violation on {}", request.getRequestURI());
-        return build(HttpStatus.CONFLICT, ErrorCodes.PLAYLIST_DUPLICATED,
-                "Conflicto de datos", request);
+        // Duplicate playlists are translated in PlaylistService; any other integrity violation is a bug.
+        log.error("Unexpected data integrity violation on {}", request.getRequestURI(), ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodes.INTERNAL_ERROR,
+                "Error interno", request);
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)

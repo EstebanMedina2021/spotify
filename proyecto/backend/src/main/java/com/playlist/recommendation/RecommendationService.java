@@ -1,10 +1,8 @@
 package com.playlist.recommendation;
 
 import com.github.benmanes.caffeine.cache.Cache;
-import com.playlist.common.TextNormalizer;
-import com.playlist.common.exception.PlaylistNotFoundException;
-import com.playlist.playlist.Playlist;
-import com.playlist.playlist.PlaylistRepository;
+import com.playlist.playlist.PlaylistService;
+import com.playlist.playlist.dto.PlaylistResponse;
 import com.playlist.recommendation.dto.RecommendationResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -12,17 +10,22 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Not transactional on purpose: the playlist is read in the short transaction of
+ * {@link PlaylistService#obtener}, which ends before the (slow) AI call starts, so no database
+ * connection is held while waiting for a third party.
+ */
 @Slf4j
 @Service
 public class RecommendationService {
 
-    private final PlaylistRepository playlistRepository;
+    private final PlaylistService playlistService;
     private final AiRecommendationClient aiRecommendationClient;
     private final PromptTemplates promptTemplates;
     private final FallbackCatalog fallbackCatalog;
@@ -30,13 +33,13 @@ public class RecommendationService {
     private final String aiProvider;
 
     public RecommendationService(
-            PlaylistRepository playlistRepository,
+            PlaylistService playlistService,
             AiRecommendationClient aiRecommendationClient,
             PromptTemplates promptTemplates,
             FallbackCatalog fallbackCatalog,
             Cache<String, RecommendationResult> recommendationCache,
             @Value("${app.ai.provider:mock}") String aiProvider) {
-        this.playlistRepository = playlistRepository;
+        this.playlistService = playlistService;
         this.aiRecommendationClient = aiRecommendationClient;
         this.promptTemplates = promptTemplates;
         this.fallbackCatalog = fallbackCatalog;
@@ -44,16 +47,13 @@ public class RecommendationService {
         this.aiProvider = aiProvider;
     }
 
-    @Transactional(readOnly = true)
     public RecommendationResponse recomendar(String playlistNombre, UUID ownerId) {
-        String nombreNormalizado = TextNormalizer.normalize(playlistNombre);
-        Playlist playlist = playlistRepository
-                .findByOwnerIdAndNombreNormalizado(ownerId, nombreNormalizado)
-                .orElseThrow(() -> new PlaylistNotFoundException(playlistNombre));
+        // Throws PlaylistNotFoundException (404) when it does not exist or belongs to someone else.
+        PlaylistResponse playlist = playlistService.obtener(playlistNombre, ownerId);
 
-        if (playlist.getCanciones() == null || playlist.getCanciones().isEmpty()) {
+        if (playlist.canciones().isEmpty()) {
             return RecommendationResponse.fromResult(
-                    playlist.getNombre(),
+                    playlist.nombre(),
                     List.of(),
                     null,
                     promptTemplates.getPromptVersion(),
@@ -63,33 +63,16 @@ public class RecommendationService {
             );
         }
 
-        List<CancionSnapshot> canciones = playlist.getCanciones().stream()
-                .map(c -> new CancionSnapshot(c.getTitulo(), c.getArtista(), c.getGenero()))
+        List<CancionSnapshot> canciones = playlist.canciones().stream()
+                .map(c -> new CancionSnapshot(c.titulo(), c.artista(), c.genero()))
                 .toList();
 
-        String cacheKey = buildCacheKey(ownerId, playlist, canciones);
-        RecommendationResult cached = recommendationCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            log.debug("Cache hit for playlist {}: motivoFallback={}", playlistNombre, cached.motivoFallback());
-            return toResponse(playlist.getNombre(), cached, null);
-        }
-
         try {
-            RecommendationResult result = aiRecommendationClient
-                    .recommend(canciones, promptTemplates.getPromptVersion())
-                    .join();
-
-            if (!result.fallback()) {
-                recommendationCache.put(cacheKey, result);
-            }
-
-            String mensaje = result.fallback()
-                    ? buildFallbackMessage(result.motivoFallback())
-                    : null;
-
-            return toResponse(playlist.getNombre(), result, mensaje);
+            RecommendationResult result = resolve(buildCacheKey(ownerId, playlist.id(), canciones), canciones);
+            String mensaje = result.fallback() ? buildFallbackMessage(result.motivoFallback()) : null;
+            return toResponse(playlist.nombre(), result, mensaje);
         } catch (Exception ex) {
-            // Defensa en profundidad: si el cliente IA falla, generamos fallback local.
+            // Defense in depth: the decorator never fails, but a bug or a swapped client must not become a 500.
             String motivo = AiFailureClassifier.motivoFor(ex);
             log.warn("AI client failed: motivo={}, cause={}", motivo, ex.getClass().getSimpleName());
 
@@ -98,9 +81,30 @@ public class RecommendationService {
                     motivo,
                     promptTemplates.getPromptVersion()
             );
-            return toResponse(playlist.getNombre(), fallbackResult,
-                    buildFallbackMessage(motivo));
+            return toResponse(playlist.nombre(), fallbackResult, buildFallbackMessage(motivo));
         }
+    }
+
+    /**
+     * Cache lookup and provider call in one atomic step per key: identical concurrent requests
+     * wait for a single provider call instead of each paying for one. Fallbacks are returned
+     * but never stored (a null from the loader means "do not cache").
+     */
+    private RecommendationResult resolve(String cacheKey, List<CancionSnapshot> canciones) {
+        AtomicReference<RecommendationResult> notCached = new AtomicReference<>();
+
+        RecommendationResult cached = recommendationCache.get(cacheKey, key -> {
+            RecommendationResult fresh = aiRecommendationClient
+                    .recommend(canciones, promptTemplates.getPromptVersion())
+                    .join();
+            if (fresh.fallback()) {
+                notCached.set(fresh);
+                return null;
+            }
+            return fresh;
+        });
+
+        return cached != null ? cached : notCached.get();
     }
 
     private RecommendationResponse toResponse(String playlistNombre, RecommendationResult result, String mensaje) {
@@ -129,13 +133,13 @@ public class RecommendationService {
         };
     }
 
-    private String buildCacheKey(UUID ownerId, Playlist playlist, List<CancionSnapshot> canciones) {
+    private String buildCacheKey(UUID ownerId, UUID playlistId, List<CancionSnapshot> canciones) {
         String hash = sha256(canciones.stream()
                 .map(c -> (c.titulo() == null ? "" : c.titulo())
                         + "|" + (c.artista() == null ? "" : c.artista())
                         + "|" + (c.genero() == null ? "" : c.genero()))
                 .collect(Collectors.joining(";")));
-        return ownerId + ":" + playlist.getId() + ":" + hash
+        return ownerId + ":" + playlistId + ":" + hash
                 + ":" + promptTemplates.getPromptVersion()
                 + ":" + aiProvider;
     }

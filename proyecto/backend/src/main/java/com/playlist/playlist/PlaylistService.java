@@ -36,7 +36,9 @@ public class PlaylistService {
 
         Playlist playlist = mapper.toEntity(request, owner);
         try {
-            Playlist saved = playlistRepository.save(playlist);
+            // saveAndFlush: the INSERT must run inside this try, otherwise the unique-constraint violation
+            // of a concurrent request would only surface at commit time, outside the catch.
+            Playlist saved = playlistRepository.saveAndFlush(playlist);
             return mapper.toResponse(saved);
         } catch (DataIntegrityViolationException ex) {
             throw new DuplicatePlaylistException(request.nombre());

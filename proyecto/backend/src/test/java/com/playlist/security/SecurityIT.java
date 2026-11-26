@@ -186,6 +186,19 @@ class SecurityIT {
         }
     }
 
+    @Test
+    void healthEndpoint_isPublicButNeverExposesDetails() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.components").doesNotExist());
+
+        // Same for an authenticated user: details must stay hidden for everyone
+        mockMvc.perform(get("/actuator/health").cookie(new Cookie("access_token", loginAndGetCookie())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components").doesNotExist());
+    }
+
     private String loginAndGetCookie() throws Exception {
         MvcResult result = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

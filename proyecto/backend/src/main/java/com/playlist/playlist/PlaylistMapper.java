@@ -1,6 +1,7 @@
 package com.playlist.playlist;
 
 import com.playlist.auth.User;
+import com.playlist.common.TextNormalizer;
 import com.playlist.playlist.dto.CancionRequest;
 import com.playlist.playlist.dto.CancionResponse;
 import com.playlist.playlist.dto.PlaylistRequest;
@@ -16,7 +17,7 @@ public class PlaylistMapper {
     public Playlist toEntity(PlaylistRequest request, User owner) {
         Playlist playlist = Playlist.builder()
                 .nombre(request.nombre().trim())
-                .nombreNormalizado(request.nombre().trim().toLowerCase())
+                .nombreNormalizado(TextNormalizer.normalize(request.nombre()))
                 .descripcion(request.descripcion())
                 .owner(owner)
                 .build();
