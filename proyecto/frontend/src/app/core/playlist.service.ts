@@ -12,20 +12,20 @@ export class PlaylistService {
   private readonly recommendationCache = new Map<string, { at: number; value: RecommendationResponse }>();
 
   readonly playlists = signal<PlaylistSummary[]>([]);
-  readonly loading = signal(false);
-  readonly loaded = signal(false);
+  readonly isLoading = signal(false);
+  readonly isLoaded = signal(false);
 
   refresh(): void {
-    this.loading.set(true);
+    this.isLoading.set(true);
     this.http.get<PlaylistSummary[]>(`${API_BASE}/lists`).subscribe({
       next: (list) => {
         this.playlists.set(list);
-        this.loaded.set(true);
-        this.loading.set(false);
+        this.isLoaded.set(true);
+        this.isLoading.set(false);
       },
       error: () => {
-        this.loaded.set(true);
-        this.loading.set(false);
+        this.isLoaded.set(true);
+        this.isLoading.set(false);
       },
     });
   }

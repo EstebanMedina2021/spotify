@@ -1,2 +1,4 @@
-/** All API calls go through the dev proxy (/api -> http://localhost:8080) to keep one origin. */
-export const API_BASE = '/api';
+import { environment } from '../../environments/environment';
+
+/** Base URL of the backend API (see src/environments). Never put credentials here. */
+export const API_BASE = environment.apiBaseUrl;

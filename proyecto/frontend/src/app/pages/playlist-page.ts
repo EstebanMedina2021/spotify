@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, map, of, switchMap, tap } from 'rxjs';
@@ -74,12 +74,12 @@ type Status = 'loading' | 'ready' | 'notfound' | 'error';
                 </button>
               </span>
               <button type="button" class="btn secondary" (click)="loadRecommendations()"
-                [disabled]="recsLoading()">
+                [disabled]="isLoadingRecommendations()">
                 <app-icon name="star" [size]="18" />
-                {{ recsLoading() ? 'Pensando…' : 'Recomendaciones' }}
+                {{ isLoadingRecommendations() ? 'Pensando…' : 'Recomendaciones' }}
               </button>
               <button type="button" class="icon-btn" title="Eliminar playlist" aria-label="Eliminar playlist"
-                (click)="remove(pl)" [disabled]="deleting()">
+                (click)="remove(pl)" [disabled]="isDeleting()">
                 <app-icon name="trash" />
               </button>
             </div>
@@ -98,14 +98,15 @@ type Status = 'loading' | 'ready' | 'notfound' | 'error';
                   </tr>
                 </thead>
                 <tbody>
-                  @for (song of pl.canciones; track song.id ?? $index; let i = $index) {
-                    <tr [class.selected]="isCurrent(song)" (click)="select(song)" tabindex="0"
+                  @for (row of rows(); track row.song.id ?? row.index) {
+                    @let song = row.song;
+                    <tr [class.selected]="row.isCurrent" (click)="select(song)" tabindex="0"
                       (keydown.enter)="select(song)">
                       <td class="num">
-                        @if (isCurrent(song)) {
+                        @if (row.isCurrent) {
                           <app-equalizer [playing]="false" />
                         } @else {
-                          {{ i + 1 }}
+                          {{ row.index + 1 }}
                         }
                       </td>
                       <td>
@@ -126,10 +127,10 @@ type Status = 'loading' | 'ready' | 'notfound' | 'error';
               </table>
             }
 
-            @if (recsLoading() || recs() || recsError()) {
+            @if (isLoadingRecommendations() || recs() || recsError()) {
               <section class="recs">
                 <h2>Recomendaciones</h2>
-                @if (recsLoading()) {
+                @if (isLoadingRecommendations()) {
                   <div class="rec-row">
                     @for (i of [1, 2, 3, 4, 5]; track i) {
                       <div class="sk-card">
@@ -334,10 +335,20 @@ export class PlaylistPage {
   protected readonly playlist = signal<Playlist | null>(null);
   protected readonly errorMessage = signal('');
   protected readonly color = signal('#333');
-  protected readonly deleting = signal(false);
+  protected readonly isDeleting = signal(false);
+
+  /** One row per song with its 'is the selected track' flag computed once, not per change detection. */
+  protected readonly rows = computed(() => {
+    const current = this.player.current();
+    return (this.playlist()?.canciones ?? []).map((song, index) => ({
+      song,
+      index,
+      isCurrent: !!current && current.titulo === song.titulo && current.artista === song.artista,
+    }));
+  });
 
   protected readonly recs = signal<RecommendationResponse | null>(null);
-  protected readonly recsLoading = signal(false);
+  protected readonly isLoadingRecommendations = signal(false);
   protected readonly recsError = signal('');
 
   constructor() {
@@ -360,10 +371,6 @@ export class PlaylistPage {
       .subscribe((result) => (result.pl ? this.onLoaded(result.pl) : this.onLoadError(result.error)));
   }
 
-  protected isCurrent(song: Cancion): boolean {
-    return this.player.isCurrent(song);
-  }
-
   protected select(song: Cancion): void {
     this.player.select({ titulo: song.titulo, artista: song.artista, album: song.album });
   }
@@ -373,16 +380,16 @@ export class PlaylistPage {
     if (!pl) {
       return;
     }
-    this.recsLoading.set(true);
+    this.isLoadingRecommendations.set(true);
     this.recsError.set('');
-    this.playlists.recommendations(pl.nombre).subscribe({
+    this.playlists.recommendations(pl.nombre).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.recs.set(response);
-        this.recsLoading.set(false);
+        this.isLoadingRecommendations.set(false);
       },
       error: (error: unknown) => {
         this.recsError.set(isApiError(error) ? error.mensaje : 'No se pudieron cargar las recomendaciones.');
-        this.recsLoading.set(false);
+        this.isLoadingRecommendations.set(false);
       },
     });
   }
@@ -391,14 +398,14 @@ export class PlaylistPage {
     if (!confirm(`¿Eliminar la playlist «${pl.nombre}»? Esta acción no se puede deshacer.`)) {
       return;
     }
-    this.deleting.set(true);
-    this.playlists.remove(pl.nombre).subscribe({
+    this.isDeleting.set(true);
+    this.playlists.remove(pl.nombre).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
         this.toast.success(`Playlist «${pl.nombre}» eliminada.`);
         void this.router.navigate(['/']);
       },
       error: (error: unknown) => {
-        this.deleting.set(false);
+        this.isDeleting.set(false);
         if (isApiError(error) && error.status === 404) {
           this.status.set('notfound');
         } else if (isApiError(error) && error.status < 500 && error.status !== 429) {

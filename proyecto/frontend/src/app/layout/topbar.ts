@@ -1,5 +1,6 @@
 import { Location } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, HostListener, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 import { Icon } from '../shared/icon';
@@ -20,13 +21,13 @@ import { Icon } from '../shared/icon';
       </div>
 
       <div class="profile">
-        <button type="button" class="profile-btn" aria-haspopup="menu" [attr.aria-expanded]="menuOpen()"
+        <button type="button" class="profile-btn" aria-haspopup="menu" [attr.aria-expanded]="isMenuOpen()"
           (click)="toggleMenu($event)">
           <span class="avatar"><app-icon name="user" [size]="18" /></span>
           <span class="name">{{ auth.username() }}</span>
           <app-icon name="chevronDown" [size]="18" />
         </button>
-        @if (menuOpen()) {
+        @if (isMenuOpen()) {
           <div class="menu" role="menu">
             <button type="button" role="menuitem" (click)="logout()">
               <app-icon name="logout" [size]="18" /> Cerrar sesión
@@ -128,26 +129,27 @@ export class Topbar {
   protected readonly auth = inject(AuthService);
   protected readonly location = inject(Location);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
-  protected readonly menuOpen = signal(false);
+  protected readonly isMenuOpen = signal(false);
 
   protected toggleMenu(event: Event): void {
     event.stopPropagation();
-    this.menuOpen.update((open) => !open);
+    this.isMenuOpen.update((open) => !open);
   }
 
   @HostListener('document:click', ['$event'])
   protected onDocumentClick(event: Event): void {
-    if (this.menuOpen() && !this.host.nativeElement.contains(event.target as Node)) {
-      this.menuOpen.set(false);
+    if (this.isMenuOpen() && !this.host.nativeElement.contains(event.target as Node)) {
+      this.isMenuOpen.set(false);
     }
   }
 
   protected logout(): void {
-    this.menuOpen.set(false);
+    this.isMenuOpen.set(false);
     // Whatever the server answers, the local session is dropped (finalize in AuthService).
-    this.auth.logout().subscribe({
+    this.auth.logout().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => void this.router.navigate(['/login']),
       error: () => void this.router.navigate(['/login']),
     });

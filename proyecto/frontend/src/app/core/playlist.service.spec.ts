@@ -35,8 +35,8 @@ describe('PlaylistService', () => {
     http.expectOne('/api/lists').flush([{ id: '1', nombre: 'A', descripcion: null, numeroCanciones: 2 }]);
 
     expect(service.playlists()).toHaveLength(1);
-    expect(service.loaded()).toBe(true);
-    expect(service.loading()).toBe(false);
+    expect(service.isLoaded()).toBe(true);
+    expect(service.isLoading()).toBe(false);
   });
 
   it('caches successful recommendations (second call makes no request)', () => {

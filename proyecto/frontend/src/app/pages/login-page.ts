@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../core/auth.service';
@@ -37,8 +38,8 @@ import { Icon } from '../shared/icon';
           <p class="error banner" role="alert">{{ errorMessage() }}</p>
         }
 
-        <button type="submit" class="btn primary" [disabled]="submitting()">
-          {{ submitting() ? 'Entrando…' : 'Entrar' }}
+        <button type="submit" class="btn primary" [disabled]="isSubmitting()">
+          {{ isSubmitting() ? 'Entrando…' : 'Entrar' }}
         </button>
       </form>
     </div>
@@ -82,17 +83,18 @@ import { Icon } from '../shared/icon';
 export class LoginPage implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly form = inject(FormBuilder).nonNullable.group({
     username: ['', [Validators.required, Validators.maxLength(50)]],
     password: ['', [Validators.required]],
   });
-  protected readonly submitting = signal(false);
+  protected readonly isSubmitting = signal(false);
   protected readonly errorMessage = signal('');
 
   ngOnInit(): void {
     // Also primes the XSRF-TOKEN cookie, which the backend issues on any request.
-    this.auth.checkSession().subscribe((ok) => {
+    this.auth.checkSession().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((ok) => {
       if (ok) {
         void this.router.navigate(['/']);
       }
@@ -109,17 +111,17 @@ export class LoginPage implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
-    this.submitting.set(true);
+    this.isSubmitting.set(true);
     this.errorMessage.set('');
     const { username, password } = this.form.getRawValue();
 
-    this.auth.login(username.trim(), password).subscribe({
+    this.auth.login(username.trim(), password).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
-        this.submitting.set(false);
+        this.isSubmitting.set(false);
         void this.router.navigate(['/']);
       },
       error: (error: unknown) => {
-        this.submitting.set(false);
+        this.isSubmitting.set(false);
         if (isApiError(error) && error.codigo === 'INVALID_CREDENTIALS') {
           this.errorMessage.set('Usuario o contraseña incorrectos.');
         } else if (isApiError(error) && error.status === 429) {

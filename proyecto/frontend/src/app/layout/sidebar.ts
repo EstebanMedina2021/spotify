@@ -28,7 +28,7 @@ import { Skeleton } from '../shared/skeleton';
       </header>
 
       <div class="list">
-        @if (!playlists.loaded()) {
+        @if (!playlists.isLoaded()) {
           @for (i of [1, 2, 3, 4]; track i) {
             <div class="item">
               <app-skeleton width="48px" height="48px" />

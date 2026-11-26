@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { isApiError, RecommendationResponse, SpotifyGenres } from '../core/models';
 import { PlaylistService } from '../core/playlist.service';
@@ -18,7 +19,7 @@ import { Skeleton } from '../shared/skeleton';
     <h1 class="greeting">{{ greeting }}</h1>
 
     <div class="quick">
-      @if (!playlists.loaded()) {
+      @if (!playlists.isLoaded()) {
         @for (i of [1, 2, 3, 4, 5, 6]; track i) {
           <app-skeleton height="64px" radius="4px" />
         }
@@ -32,13 +33,13 @@ import { Skeleton } from '../shared/skeleton';
       }
     </div>
 
-    @if (playlists.loaded() && playlists.playlists().length === 0) {
+    @if (playlists.isLoaded() && playlists.playlists().length === 0) {
       <section class="empty">
         <h2>Aún no tienes playlists</h2>
         <p>Crea una y llénala con canciones de Spotify para recibir recomendaciones.</p>
         <a class="btn primary" routerLink="/lists/new">Crear playlist</a>
       </section>
-    } @else if (playlists.loaded()) {
+    } @else if (playlists.isLoaded()) {
       <app-carousel title="Tus playlists">
         @for (playlist of playlists.playlists(); track playlist.id) {
           <app-playlist-card [playlist]="playlist" />
@@ -48,7 +49,7 @@ import { Skeleton } from '../shared/skeleton';
 
     @if (basePlaylist()) {
       <app-carousel title="Recomendado para ti" [subtitle]="'Basado en «' + basePlaylist() + '»'">
-        @if (recsLoading()) {
+        @if (isLoadingRecommendations()) {
           @for (i of [1, 2, 3, 4, 5]; track i) {
             <div class="sk-card">
               <app-skeleton height="140px" />
@@ -80,10 +81,9 @@ import { Skeleton } from '../shared/skeleton';
           <app-skeleton width="180px" height="100px" radius="8px" />
         }
       } @else {
-        @for (genre of genres()!.generos; track genre) {
-          <a class="genre" [routerLink]="['/search']" [queryParams]="{ q: genre }"
-            [style.background]="genreColor(genre)">
-            {{ genre }}
+        @for (card of genreCards(); track card.name) {
+          <a class="genre" [routerLink]="['/search']" [queryParams]="{ q: card.name }" [style.background]="card.color">
+            {{ card.name }}
           </a>
         }
       }
@@ -158,36 +158,37 @@ import { Skeleton } from '../shared/skeleton';
 export class HomePage {
   protected readonly playlists = inject(PlaylistService);
   private readonly spotify = inject(SpotifyService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly greeting = greetingFor(new Date().getHours());
 
   protected readonly quickAccess = computed(() => this.playlists.playlists().slice(0, 6));
   protected readonly genres = signal<SpotifyGenres | null>(null);
+  /** Genre tiles with their color computed once per genre list, not on every change detection. */
+  protected readonly genreCards = computed(() =>
+    (this.genres()?.generos ?? []).map((name) => ({ name, color: `hsl(${hueFromString(name)} 55% 32%)` })),
+  );
 
   /** First playlist that has songs: the AI needs something to analyze. */
   protected readonly basePlaylist = signal<string | null>(null);
   protected readonly recs = signal<RecommendationResponse | null>(null);
-  protected readonly recsLoading = signal(false);
+  protected readonly isLoadingRecommendations = signal(false);
   protected readonly recsError = signal('');
 
   constructor() {
-    this.spotify.genres().subscribe({ next: (g) => this.genres.set(g), error: () => this.genres.set({ generos: [], fallback: true, motivoFallback: null }) });
+    this.spotify.genres().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({ next: (g) => this.genres.set(g), error: () => this.genres.set({ generos: [], fallback: true, motivoFallback: null }) });
 
     effect(() => {
-      const loaded = this.playlists.loaded();
+      const isLoaded = this.playlists.isLoaded();
       const candidate = this.playlists.playlists().find((p) => p.numeroCanciones > 0)?.nombre ?? null;
-      if (loaded) {
+      if (isLoaded) {
         untracked(() => this.loadRecommendations(candidate));
       }
     });
   }
 
-  protected genreColor(genre: string): string {
-    return `hsl(${hueFromString(genre)} 55% 32%)`;
-  }
-
   private loadRecommendations(nombre: string | null): void {
-    if (nombre === this.basePlaylist() && (this.recs() || this.recsLoading())) {
+    if (nombre === this.basePlaylist() && (this.recs() || this.isLoadingRecommendations())) {
       return;
     }
     this.basePlaylist.set(nombre);
@@ -196,15 +197,15 @@ export class HomePage {
     if (!nombre) {
       return;
     }
-    this.recsLoading.set(true);
-    this.playlists.recommendations(nombre).subscribe({
+    this.isLoadingRecommendations.set(true);
+    this.playlists.recommendations(nombre).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.recs.set(response);
-        this.recsLoading.set(false);
+        this.isLoadingRecommendations.set(false);
       },
       error: (error: unknown) => {
         this.recsError.set(isApiError(error) ? error.mensaje : 'No se pudieron cargar las recomendaciones.');
-        this.recsLoading.set(false);
+        this.isLoadingRecommendations.set(false);
       },
     });
   }

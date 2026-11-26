@@ -35,9 +35,9 @@ const MAX_CHARS = 100; // backend limit for `q`
             <app-skeleton height="100px" radius="8px" />
           }
         } @else {
-          @for (genre of genres()!.generos; track genre) {
-            <button type="button" class="genre" [style.background]="genreColor(genre)" (click)="query.setValue(genre)">
-              {{ genre }}
+          @for (card of genreCards(); track card.name) {
+            <button type="button" class="genre" [style.background]="card.color" (click)="query.setValue(card.name)">
+              {{ card.name }}
             </button>
           }
         }
@@ -52,7 +52,7 @@ const MAX_CHARS = 100; // backend limit for `q`
         </div>
       }
 
-      @if (searching()) {
+      @if (isSearching()) {
         <h2 class="section-title">Canciones</h2>
         @for (i of [1, 2, 3, 4]; track i) {
           <div class="sk-row"><app-skeleton width="40px" height="40px" /><app-skeleton width="50%" height="14px" /></div>
@@ -72,15 +72,16 @@ const MAX_CHARS = 100; // backend limit for `q`
         }
 
         <h2 class="section-title">Canciones</h2>
-        @if (failed()) {
+        @if (hasFailed()) {
           <p class="muted">No se pudo buscar en Spotify en este momento.</p>
         } @else if (tracks().length === 0) {
           <p class="muted">Sin resultados para «{{ term() }}».</p>
         } @else {
           <ul class="tracks">
-            @for (track of tracks(); track track.spotifyId) {
+            @for (row of trackRows(); track row.track.spotifyId) {
+              @let track = row.track;
               <li>
-                <button type="button" class="track" [class.selected]="isCurrent(track)" (click)="select(track)">
+                <button type="button" class="track" [class.selected]="row.isCurrent" (click)="select(track)">
                   <app-cover [seed]="track.titulo + track.artista" [size]="40" />
                   <span class="t">
                     <strong>{{ track.titulo }}</strong>
@@ -233,9 +234,15 @@ export class SearchPage {
   /** Debounced, trimmed search term. */
   protected readonly term = signal('');
   protected readonly tracks = signal<SpotifyTrack[]>([]);
-  protected readonly searching = signal(false);
-  protected readonly failed = signal(false);
+  protected readonly isSearching = signal(false);
+  protected readonly hasFailed = signal(false);
   protected readonly genres = signal<SpotifyGenres | null>(null);
+  protected readonly genreCards = computed(() =>
+    (this.genres()?.generos ?? []).map((name) => ({ name, color: `hsl(${hueFromString(name)} 55% 32%)` })),
+  );
+  protected readonly trackRows = computed(() =>
+    this.tracks().map((track) => ({ track, isCurrent: this.player.isCurrent(track) })),
+  );
 
   protected readonly matchingPlaylists = computed(() => {
     const needle = this.term().toLowerCase();
@@ -258,7 +265,7 @@ export class SearchPage {
   });
 
   constructor() {
-    this.spotify.genres().subscribe({ next: (g) => this.genres.set(g), error: () => this.genres.set(null) });
+    this.spotify.genres().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({ next: (g) => this.genres.set(g), error: () => this.genres.set(null) });
 
     this.query.valueChanges
       .pipe(
@@ -267,8 +274,8 @@ export class SearchPage {
         distinctUntilChanged(),
         tap((term) => {
           this.term.set(term);
-          this.failed.set(false);
-          this.searching.set(term.length >= MIN_CHARS);
+          this.hasFailed.set(false);
+          this.isSearching.set(term.length >= MIN_CHARS);
           if (term.length < MIN_CHARS) {
             this.tracks.set([]);
           }
@@ -276,32 +283,24 @@ export class SearchPage {
         // switchMap cancels the previous request, so a slow old answer never overwrites a newer one.
         switchMap((term) =>
           term.length < MIN_CHARS
-            ? of({ tracks: [] as SpotifyTrack[], failed: false })
+            ? of({ tracks: [] as SpotifyTrack[], hasFailed: false })
             : this.spotify.search(term).pipe(
-                map((tracks) => ({ tracks, failed: false })),
-                catchError(() => of({ tracks: [] as SpotifyTrack[], failed: true })),
+                map((tracks) => ({ tracks, hasFailed: false })),
+                catchError(() => of({ tracks: [] as SpotifyTrack[], hasFailed: true })),
               ),
         ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((result) => {
         this.tracks.set(result.tracks);
-        this.failed.set(result.failed);
-        this.searching.set(false);
+        this.hasFailed.set(result.hasFailed);
+        this.isSearching.set(false);
       });
 
     const initial = this.route.snapshot.queryParamMap.get('q');
     if (initial) {
       this.query.setValue(initial.slice(0, MAX_CHARS));
     }
-  }
-
-  protected genreColor(genre: string): string {
-    return `hsl(${hueFromString(genre)} 55% 32%)`;
-  }
-
-  protected isCurrent(track: SpotifyTrack): boolean {
-    return this.player.isCurrent(track);
   }
 
   protected select(track: SpotifyTrack): void {

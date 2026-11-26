@@ -12,7 +12,7 @@ export interface PlayerTrack {
  */
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
-  readonly audioAvailable = false;
+  readonly isAudioAvailable = false;
   readonly current = signal<PlayerTrack | null>(null);
 
   select(track: PlayerTrack): void {

@@ -1,22 +1,20 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { catchError, debounceTime, distinctUntilChanged, map, of, switchMap, tap } from 'rxjs';
-import { Cancion, isApiError, SpotifyGenres, SpotifyTrack } from '../core/models';
+import { Cancion, isApiError } from '../core/models';
 import { PlaylistService } from '../core/playlist.service';
-import { SpotifyService } from '../core/spotify.service';
 import { ToastService } from '../core/toast.service';
 import { noControlChars, notBlank, playlistNameChars } from '../core/validators';
 import { Cover } from '../shared/cover';
 import { Icon } from '../shared/icon';
-import { Skeleton } from '../shared/skeleton';
+import { SongPicker } from './song-picker';
 
 const MAX_SONGS = 100;
 
 @Component({
   selector: 'app-create-playlist-page',
-  imports: [ReactiveFormsModule, RouterLink, Icon, Cover, Skeleton],
+  imports: [ReactiveFormsModule, RouterLink, Icon, Cover, SongPicker],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="page-title">Crear playlist</h1>
@@ -58,8 +56,8 @@ const MAX_SONGS = 100;
         }
 
         <div class="buttons">
-          <button type="submit" class="btn primary" [disabled]="submitting()">
-            {{ submitting() ? 'Guardando…' : 'Crear playlist' }}
+          <button type="submit" class="btn primary" [disabled]="isSubmitting()">
+            {{ isSubmitting() ? 'Guardando…' : 'Crear playlist' }}
           </button>
           <a class="btn secondary" routerLink="/">Cancelar</a>
         </div>
@@ -88,70 +86,7 @@ const MAX_SONGS = 100;
           </ul>
         }
 
-        <div class="field">
-          <label for="spotify-q">Buscar en Spotify</label>
-          <input id="spotify-q" type="search" [formControl]="songQuery" maxlength="100" autocomplete="off"
-            placeholder="Título o artista" [disabled]="songs().length >= maxSongs" />
-        </div>
-
-        @if (searching()) {
-          <app-skeleton height="40px" />
-          <app-skeleton height="40px" />
-        } @else if (searchFailed()) {
-          <p class="muted">No se pudo buscar en Spotify. Puedes agregar la canción a mano.</p>
-        } @else if (results().length > 0) {
-          <ul class="songs results">
-            @for (track of results(); track track.spotifyId) {
-              <li>
-                <app-cover [seed]="track.titulo + track.artista" [size]="40" />
-                <span class="info">
-                  <strong>{{ track.titulo }}</strong>
-                  <small>{{ track.artista }}{{ track.album ? ' · ' + track.album : '' }}</small>
-                </span>
-                <button type="button" class="btn secondary add" (click)="addFromSpotify(track)"
-                  [disabled]="songs().length >= maxSongs">
-                  <app-icon name="plus" [size]="16" /> Agregar
-                </button>
-              </li>
-            }
-          </ul>
-        }
-
-        <details class="manual">
-          <summary>Agregar a mano</summary>
-          <div class="manual-grid" [formGroup]="manual">
-            <div class="field">
-              <label for="m-titulo">Título *</label>
-              <input id="m-titulo" formControlName="titulo" maxlength="100" />
-            </div>
-            <div class="field">
-              <label for="m-artista">Artista *</label>
-              <input id="m-artista" formControlName="artista" maxlength="100" />
-            </div>
-            <div class="field">
-              <label for="m-album">Álbum</label>
-              <input id="m-album" formControlName="album" maxlength="100" />
-            </div>
-            <div class="field">
-              <label for="m-anno">Año</label>
-              <input id="m-anno" formControlName="anno" maxlength="10" />
-            </div>
-            <div class="field">
-              <label for="m-genero">Género</label>
-              <input id="m-genero" formControlName="genero" maxlength="50" list="genre-options" />
-              <datalist id="genre-options">
-                @for (genre of genres()?.generos ?? []; track genre) {
-                  <option [value]="genre"></option>
-                }
-              </datalist>
-              <span class="hint">Sugerencias de Spotify; también puedes escribir otro.</span>
-            </div>
-            <button type="button" class="btn secondary" (click)="addManual()"
-              [disabled]="manual.invalid || songs().length >= maxSongs">
-              <app-icon name="plus" [size]="16" /> Agregar canción
-            </button>
-          </div>
-        </details>
+        <app-song-picker [isFull]="songs().length >= maxSongs" (songSelected)="addSong($event)" />
       </section>
     </form>
   `,
@@ -228,108 +163,43 @@ const MAX_SONGS = 100;
     .icon-btn:hover {
       color: var(--text);
     }
-    .add {
-      padding: 6px 14px;
-    }
-    .manual summary {
-      cursor: pointer;
-      font-weight: 700;
-      margin-bottom: 12px;
-    }
-    .manual-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
   `,
 })
 export class CreatePlaylistPage {
   private readonly playlists = inject(PlaylistService);
-  private readonly spotify = inject(SpotifyService);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly fb = inject(FormBuilder).nonNullable;
 
   protected readonly maxSongs = MAX_SONGS;
 
-  protected readonly form = this.fb.group({
+  protected readonly form = inject(FormBuilder).nonNullable.group({
     nombre: ['', [Validators.required, Validators.maxLength(50), notBlank, noControlChars, playlistNameChars]],
     descripcion: ['', [Validators.maxLength(200), noControlChars]],
   });
 
-  protected readonly manual = this.fb.group({
-    titulo: ['', [Validators.required, Validators.maxLength(100), notBlank, noControlChars]],
-    artista: ['', [Validators.required, Validators.maxLength(100), notBlank, noControlChars]],
-    album: ['', [Validators.maxLength(100), noControlChars]],
-    anno: ['', [Validators.maxLength(10), noControlChars]],
-    genero: ['', [Validators.maxLength(50), noControlChars]],
-  });
-
   protected readonly songs = signal<Cancion[]>([]);
-  protected readonly submitting = signal(false);
+  protected readonly isSubmitting = signal(false);
   protected readonly errorMessage = signal('');
-
-  protected readonly songQuery = new FormControl('', { nonNullable: true });
-  protected readonly results = signal<SpotifyTrack[]>([]);
-  protected readonly searching = signal(false);
-  protected readonly searchFailed = signal(false);
-  protected readonly genres = signal<SpotifyGenres | null>(null);
-
-  constructor() {
-    this.spotify.genres().subscribe({ next: (g) => this.genres.set(g), error: () => this.genres.set(null) });
-
-    this.songQuery.valueChanges
-      .pipe(
-        debounceTime(350),
-        map((value) => value.trim()),
-        distinctUntilChanged(),
-        tap((term) => {
-          this.searchFailed.set(false);
-          this.searching.set(term.length >= 2);
-          if (term.length < 2) {
-            this.results.set([]);
-          }
-        }),
-        switchMap((term) =>
-          term.length < 2
-            ? of({ tracks: [] as SpotifyTrack[], failed: false })
-            : this.spotify.search(term).pipe(
-                map((tracks) => ({ tracks, failed: false })),
-                catchError(() => of({ tracks: [] as SpotifyTrack[], failed: true })),
-              ),
-        ),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((result) => {
-        this.results.set(result.tracks);
-        this.searchFailed.set(result.failed);
-        this.searching.set(false);
-      });
-  }
 
   protected invalid(control: { invalid: boolean; touched: boolean; dirty: boolean }): boolean {
     return control.invalid && (control.touched || control.dirty);
   }
 
-  protected addFromSpotify(track: SpotifyTrack): void {
-    this.pushSong({ titulo: track.titulo, artista: track.artista, album: track.album });
-  }
-
-  protected addManual(): void {
-    if (this.manual.invalid) {
-      this.manual.markAllAsTouched();
+  protected addSong(song: Cancion): void {
+    if (this.songs().length >= MAX_SONGS) {
       return;
     }
-    const value = this.manual.getRawValue();
-    this.pushSong({
-      titulo: value.titulo,
-      artista: value.artista,
-      album: value.album,
-      anno: value.anno,
-      genero: value.genero,
-    });
-    this.manual.reset();
+    this.songs.update((list) => [
+      ...list,
+      {
+        titulo: song.titulo.trim(),
+        artista: song.artista.trim(),
+        album: song.album?.trim() || null,
+        anno: song.anno?.trim() || null,
+        genero: song.genero?.trim() || null,
+      },
+    ]);
   }
 
   protected removeSong(index: number): void {
@@ -341,48 +211,35 @@ export class CreatePlaylistPage {
       this.form.markAllAsTouched();
       return;
     }
-    this.submitting.set(true);
+    this.isSubmitting.set(true);
     this.errorMessage.set('');
     const { nombre, descripcion } = this.form.getRawValue();
-    const nombreTrim = nombre.trim();
 
     this.playlists
-      .create({
-        nombre: nombreTrim,
-        descripcion: descripcion.trim() || null,
-        canciones: this.songs(),
-      })
+      .create({ nombre: nombre.trim(), descripcion: descripcion.trim() || null, canciones: this.songs() })
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (created) => {
           this.toast.success(`Playlist «${created.nombre}» creada.`);
           void this.router.navigate(['/lists', created.nombre]);
         },
-        error: (error: unknown) => {
-          this.submitting.set(false);
-          if (isApiError(error) && error.status === 409) {
-            this.form.controls.nombre.setErrors({ duplicate: true });
-            this.form.controls.nombre.markAsTouched();
-          } else if (isApiError(error) && error.status === 400) {
-            this.errorMessage.set(error.mensaje);
-          } else if (isApiError(error) && error.status === 403) {
-            this.errorMessage.set('Tu sesión de seguridad expiró. Recarga la página e intenta de nuevo.');
-          }
-          // 401, 429 and 5xx are handled globally by the error interceptor (redirect / toast).
-        },
+        error: (error: unknown) => this.onSubmitError(error),
       });
   }
 
-  private pushSong(song: Cancion): void {
-    if (this.songs().length >= MAX_SONGS) {
+  private onSubmitError(error: unknown): void {
+    this.isSubmitting.set(false);
+    if (!isApiError(error)) {
       return;
     }
-    const clean: Cancion = {
-      titulo: song.titulo.trim(),
-      artista: song.artista.trim(),
-      album: song.album?.trim() || null,
-      anno: song.anno?.trim() || null,
-      genero: song.genero?.trim() || null,
-    };
-    this.songs.update((list) => [...list, clean]);
+    if (error.status === 409) {
+      this.form.controls.nombre.setErrors({ duplicate: true });
+      this.form.controls.nombre.markAsTouched();
+    } else if (error.status === 400) {
+      this.errorMessage.set(error.mensaje);
+    } else if (error.status === 403) {
+      this.errorMessage.set('Tu sesión de seguridad expiró. Recarga la página e intenta de nuevo.');
+    }
+    // 401, 429 and 5xx are handled globally by the error interceptor (redirect / toast).
   }
 }
