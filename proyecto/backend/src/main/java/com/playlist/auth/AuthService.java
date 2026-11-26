@@ -26,8 +26,10 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
+    private final LoginAttemptLimiter loginAttemptLimiter;
 
     public AuthenticatedUser authenticate(String username, String password) {
+        loginAttemptLimiter.check(username);
         try {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(username, password));

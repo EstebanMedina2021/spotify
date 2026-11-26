@@ -46,6 +46,12 @@ public class RateLimitConfig {
     @Value("${app.rate-limit.spotify:30}")
     private int spotifyLimit;
 
+    @Value("${app.rate-limit.logout:30}")
+    private int logoutLimit;
+
+    @Value("${app.rate-limit.me:60}")
+    private int meLimit;
+
     @Bean
     public ConcurrentMap<String, Bucket> rateLimitBuckets() {
         return Caffeine.newBuilder()
@@ -58,7 +64,8 @@ public class RateLimitConfig {
     @Bean
     public RateLimitFilter rateLimitFilter(ConcurrentMap<String, Bucket> buckets,
                                            ObjectMapper objectMapper) {
-        return new RateLimitFilter(buckets, objectMapper, loginPerIp, loginPerUser);
+        return new RateLimitFilter(buckets, objectMapper, loginPerIp, loginPerUser,
+                recommendationsLimit, spotifyLimit, listsLimit, logoutLimit, meLimit);
     }
 
     @RequiredArgsConstructor
@@ -68,6 +75,11 @@ public class RateLimitConfig {
         private final ObjectMapper objectMapper;
         private final int loginPerIp;
         private final int loginPerUser;
+        private final int recommendationsLimit;
+        private final int spotifyLimit;
+        private final int listsLimit;
+        private final int logoutLimit;
+        private final int meLimit;
 
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -82,17 +94,48 @@ public class RateLimitConfig {
                 }
             }
 
-            // NUEVO: rate limit para recomendaciones
             if ("GET".equals(method) && path.matches("^/lists/[^/]+/recommendations$")) {
                 String userId = extractUserIdFromSecurityContext();
-                if (userId != null) {
-                    if (!tryConsume("recommendations:" + userId, 5, response, request)) {
-                        return;
-                    }
+                if (userId != null
+                        && !tryConsume("recommendations:" + userId, recommendationsLimit, response, request)) {
+                    return;
+                }
+            }
+
+            if ("POST".equals(method) && "/auth/logout".equals(path)
+                    && !tryConsume("logout:" + userOrIp(request), logoutLimit, response, request)) {
+                return;
+            }
+
+            if ("GET".equals(method) && "/auth/me".equals(path)
+                    && !tryConsume("me:" + userOrIp(request), meLimit, response, request)) {
+                return;
+            }
+
+            // All /lists/** (except recommendations, which has its own stricter bucket) share one bucket per user
+            if ((path.equals("/lists") || path.startsWith("/lists/"))
+                    && !path.endsWith("/recommendations")) {
+                String userId = extractUserIdFromSecurityContext();
+                if (userId != null && !tryConsume("lists:" + userId, listsLimit, response, request)) {
+                    return;
+                }
+            }
+
+            // /spotify/genres and /spotify/search share one bucket per user
+            if (path.startsWith("/spotify/")) {
+                String userId = extractUserIdFromSecurityContext();
+                if (userId != null && !tryConsume("spotify:" + userId, spotifyLimit, response, request)) {
+                    return;
                 }
             }
 
             filterChain.doFilter(request, response);
+        }
+
+        /** Authenticated user id, or the remote address when the request is anonymous. */
+        private String userOrIp(HttpServletRequest request) {
+            String userId = extractUserIdFromSecurityContext();
+            return userId != null ? userId : "ip:" + request.getRemoteAddr();
         }
 
         private String extractUserIdFromSecurityContext() {

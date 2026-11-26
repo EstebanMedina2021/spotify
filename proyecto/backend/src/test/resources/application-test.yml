@@ -46,3 +46,5 @@ app:
     lists: 1000
     recommendations: 1000
     spotify: 1000
+    logout: 1000
+    me: 1000
