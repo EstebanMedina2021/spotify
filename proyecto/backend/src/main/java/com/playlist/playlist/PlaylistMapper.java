@@ -6,7 +6,6 @@ import com.playlist.playlist.dto.CancionRequest;
 import com.playlist.playlist.dto.CancionResponse;
 import com.playlist.playlist.dto.PlaylistRequest;
 import com.playlist.playlist.dto.PlaylistResponse;
-import com.playlist.playlist.dto.PlaylistSummary;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -56,16 +55,6 @@ public class PlaylistMapper {
                 canciones,
                 playlist.getCreatedAt(),
                 playlist.getUpdatedAt()
-        );
-    }
-
-    public PlaylistSummary toSummary(Playlist playlist) {
-        int numero = playlist.getCanciones() == null ? 0 : playlist.getCanciones().size();
-        return new PlaylistSummary(
-                playlist.getId(),
-                playlist.getNombre(),
-                playlist.getDescripcion(),
-                numero
         );
     }
 

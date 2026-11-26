@@ -47,9 +47,7 @@ public class PlaylistService {
 
     @Transactional(readOnly = true)
     public List<PlaylistSummary> listar(UUID ownerId) {
-        return playlistRepository.findAllByOwnerIdOrderByCreatedAtDesc(ownerId).stream()
-                .map(mapper::toSummary)
-                .toList();
+        return playlistRepository.findSummariesByOwnerId(ownerId);
     }
 
     @Transactional(readOnly = true)
