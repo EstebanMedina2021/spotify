@@ -591,9 +591,23 @@ Total actual: backend **82 unitarias y 91 de integración**; frontend **26**.
 
 5. **Verificación de que los tests realmente fallan si el código está mal:** la IA puede generar tests tautológicos que siempre pasan. Debo verificar manualmente que cada test falla cuando debe fallar.
 
-**Fase de implementación (pendiente):**
+**Fase de implementación** *(borrador preparado por Kiro con base en los defectos reales de §2.6, §2.7 y §6.1; el autor debe confirmarlo o ajustarlo):*
 
-`[COMPLETAR — qué NO delegaría a la IA (Grok/Kiro) durante la implementación y por qué, con ejemplos concretos. Ejemplo: "No delegaría la decisión de qué excepciones capturar en el GlobalExceptionHandler; la IA tiende a capturar Exception genérica."]`
+6. **Verificar contra el sistema real, no contra mocks.** Los 62 tests en verde no detectaron que la app no arrancaba, que la cookie CSRF no se emitía ni que el timeout no se aplicaba. Solo lo reveló ejecutar el proyecto, hacer una petición real y probar con un LLM real (Ollama). No delegaría el "¿funciona de verdad?": lo hace una persona corriendo el flujo completo.
+
+7. **Qué se simula en un test y qué no.** La IA sustituyó con `@MockitoBean` el decorador de resiliencia, y por eso nada ejercitaba el fallback. Decidir qué se mockea (el proveedor externo) y qué debe correr real (breaker, parser, filtros de seguridad) es criterio de diseño de pruebas.
+
+8. **Aceptar o rechazar un diagnóstico de la propia IA.** Kiro marcó el `CsrfValidationFilter` como duplicado (I6). Tenía razón en parte de la evidencia y se equivocó en la conclusión: sin ese filtro, `POST /lists` sin token devolvía 201. Lo salvó una prueba, no la confianza en la IA. Toda eliminación de código de seguridad que proponga la IA debe pasar por una prueba que falle sin él.
+
+9. **Versiones, modelos y APIs externas.** La IA propuso Boot 4.2.0 con Spring AI 2.0.x (incompatibles), fijó `gemini-2.0-flash` (ya apagado) y citó nombres de `@Qualifier` que no existen. Tiene fecha de corte. Elegir versiones y confirmar qué endpoints existen (Spotify: 404/403/200 con mi cuenta) lo verifico yo contra la fuente.
+
+10. **Qué excepciones se capturan y cómo se clasifican los errores.** La IA tendió a mapear por el texto del mensaje (`"401"`, `"permission"`) y a capturar de forma genérica. Definir una política única por tipo y código HTTP (`AiErrorMapper`, `AiFailureClassifier`) y qué es un fallo recuperable es una decisión mía.
+
+11. **Datos, secretos y privacidad.** Elegí un modelo local (Ollama) para no enviar información a un tercero y no tener claves. La IA no pesa ese riesgo por sí sola. También me corresponde decidir que el usuario demo exista solo en `dev` y que un secreto de ejemplo nunca sea válido.
+
+12. **Aceptar la calidad de la salida de un LLM.** Un modelo de 3B devolvía una sola recomendación y campos `razon` inventados. Decidir qué es "suficientemente bueno" y qué limitación se documenta en lugar de ocultarla es una decisión de producto y de honestidad con el evaluador.
+
+13. **Qué es deuda técnica aceptada.** El `ObjectMapper` de Jackson 2 funciona pero es deuda; la limitación de rate limit por IP tras un proxy está documentada. Decidir qué se deja y qué se declara no se delega.
 
 ### 6.3. Autoría
 
