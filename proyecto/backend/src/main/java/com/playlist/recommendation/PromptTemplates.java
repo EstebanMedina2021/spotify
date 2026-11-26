@@ -20,7 +20,12 @@ public class PromptTemplates {
     private String template;
     private String promptVersion;
 
-    public PromptTemplates(@Value("classpath:prompts/recommendations-v1.txt") Resource promptResource) {
+    /**
+     * The prompt file is configurable so a new version can be rolled out (and rolled back) without
+     * touching code; old versions stay in the repository.
+     */
+    public PromptTemplates(
+            @Value("${app.ai.prompt-file:classpath:prompts/recommendations-v2.txt}") Resource promptResource) {
         this.promptResource = promptResource;
     }
 
@@ -31,8 +36,8 @@ public class PromptTemplates {
             // Fail at startup instead of silently sending a prompt without the songs.
             throw new IllegalStateException("Prompt template has no " + PLACEHOLDER + " placeholder");
         }
-        String filename = promptResource.getFilename(); // recommendations-v1.txt
-        this.promptVersion = filename.replace("recommendations-", "").replace(".txt", ""); // v1
+        String filename = promptResource.getFilename(); // recommendations-v2.txt
+        this.promptVersion = filename.replace("recommendations-", "").replace(".txt", ""); // v2
     }
 
     public String getPromptVersion() {
@@ -42,7 +47,7 @@ public class PromptTemplates {
     public String buildPrompt(List<CancionSnapshot> canciones) {
         String bloque = canciones.stream()
                 .limit(MAX_CANCIONES)
-                .map(c -> "- " + clean(c.titulo()) + " - " + clean(c.artista()) + " - " + clean(c.genero()))
+                .map(PromptTemplates::toJsonLine)
                 .collect(Collectors.joining("\n"));
 
         if (bloque.length() > MAX_CHARS_BLOQUE) {
@@ -53,11 +58,26 @@ public class PromptTemplates {
         return template.replace(PLACEHOLDER, bloque);
     }
 
-    /** Neutralizes angle brackets and control characters so song data cannot close the <canciones> block. */
-    private String clean(String value) {
+    /**
+     * One song as a JSON object. A structured line (instead of "- title - artist - genre") stops small
+     * models from copying the separator into the title they answer with, and the quoting keeps song
+     * data unambiguous.
+     */
+    private static String toJsonLine(CancionSnapshot song) {
+        return "{\"titulo\":\"" + clean(song.titulo())
+                + "\",\"artista\":\"" + clean(song.artista())
+                + "\",\"genero\":\"" + clean(song.genero()) + "\"}";
+    }
+
+    /** Neutralizes angle brackets and control characters, and escapes what would break the JSON line. */
+    private static String clean(String value) {
         if (value == null || value.isBlank()) {
             return "desconocido";
         }
-        return value.replace('<', '\u2039').replace('>', '\u203A').replaceAll("\\p{Cntrl}", " ");
+        return value
+                .replace('<', '\u2039').replace('>', '\u203A')
+                .replaceAll("\\p{Cntrl}", " ")
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"");
     }
 }

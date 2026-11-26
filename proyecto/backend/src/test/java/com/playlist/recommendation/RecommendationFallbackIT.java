@@ -36,6 +36,7 @@ class RecommendationFallbackIT {
     @Autowired private UserRepository userRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private PlaylistService playlistService;
+    @Autowired private PromptTemplates promptTemplates;
 
     @Test
     void providerAuthFailure_returns200WithGenericSuggestionsAndTheRightReason() throws Exception {
@@ -60,6 +61,10 @@ class RecommendationFallbackIT {
                 .andExpect(jsonPath("$.mensaje").isNotEmpty());
     }
 
+    @Test
+    void theActivePromptVersion_isV2() {
+        org.assertj.core.api.Assertions.assertThat(promptTemplates.getPromptVersion()).isEqualTo("v2");
+    }
     private Cookie login(String username) throws Exception {
         MvcResult result = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

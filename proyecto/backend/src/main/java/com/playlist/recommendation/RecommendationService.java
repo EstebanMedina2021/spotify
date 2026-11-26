@@ -76,12 +76,7 @@ public class RecommendationService {
             String motivo = AiFailureClassifier.motivoFor(ex);
             log.warn("AI client failed: motivo={}, cause={}", motivo, ex.getClass().getSimpleName());
 
-            RecommendationResult fallbackResult = RecommendationResult.fallback(
-                    fallbackCatalog.suggestionsFor(fallbackCatalog.firstGenre(canciones)),
-                    motivo,
-                    promptTemplates.getPromptVersion()
-            );
-            return toResponse(playlist.nombre(), fallbackResult, buildFallbackMessage(motivo));
+            return toResponse(playlist.nombre(), fallbackFor(canciones, motivo), buildFallbackMessage(motivo));
         }
     }
 
@@ -98,15 +93,40 @@ public class RecommendationService {
                     .recommend(canciones, promptTemplates.getPromptVersion())
                     .join();
             if (fresh.fallback()) {
-                notCached.set(fresh);
+                notCached.set(withoutKnownSongs(fresh, canciones));
                 return null;
             }
-            return fresh;
+            List<RecomendacionItem> novel = RecommendationFilter.novelItems(fresh.recomendaciones(), canciones);
+            if (novel.isEmpty()) {
+                // The model only repeated songs the user already has: nothing usable, degrade instead.
+                notCached.set(fallbackFor(canciones, AiFailureClassifier.INVALID_RESPONSE));
+                return null;
+            }
+            return RecommendationResult.ok(novel, fresh.fuente(), fresh.promptVersion());
         });
 
         return cached != null ? cached : notCached.get();
     }
 
+    private RecommendationResult fallbackFor(List<CancionSnapshot> canciones, String motivo) {
+        RecommendationResult catalog = RecommendationResult.fallback(
+                fallbackCatalog.suggestionsFor(fallbackCatalog.firstGenre(canciones)),
+                motivo,
+                promptTemplates.getPromptVersion());
+        return withoutKnownSongs(catalog, canciones);
+    }
+
+    /**
+     * Drops songs the user already has. If that would leave nothing (tiny catalog, tiny list) the
+     * original suggestions are kept: some suggestion is better than an empty fallback.
+     */
+    private RecommendationResult withoutKnownSongs(RecommendationResult result, List<CancionSnapshot> canciones) {
+        List<RecomendacionItem> novel = RecommendationFilter.novelItems(result.recomendaciones(), canciones);
+        if (novel.isEmpty()) {
+            return result;
+        }
+        return new RecommendationResult(novel, result.fuente(), result.motivoFallback(), result.fallback(), result.promptVersion());
+    }
     private RecommendationResponse toResponse(String playlistNombre, RecommendationResult result, String mensaje) {
         return RecommendationResponse.fromResult(
                 playlistNombre,

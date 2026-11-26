@@ -167,6 +167,46 @@ class RecommendationServiceTest {
         assertThat(response.recomendaciones()).isNotEmpty();
     }
 
+    @Test
+    void songsTheUserAlreadyHas_areRemovedFromTheModelAnswer() {
+        RecommendationResult answer = RecommendationResult.ok(List.of(
+                new RecomendacionItem("Bohemian Rhapsody", "Queen", "rock", "already in the list"),
+                new RecomendacionItem("Under Pressure - Queen", "Queen", "rock", "new")), "OLLAMA", "v2");
+        providerAnswers(CompletableFuture.completedFuture(answer));
+
+        RecommendationResponse response = service.recomendar("Rock", OWNER_A);
+
+        assertThat(response.fallback()).isFalse();
+        assertThat(response.recomendaciones()).extracting(RecomendacionItem::titulo).containsExactly("Under Pressure");
+    }
+
+    @Test
+    void ifTheModelOnlyRepeatsKnownSongs_itBecomesAFallbackAndIsNotCached() {
+        RecommendationResult onlyKnown = RecommendationResult.ok(List.of(
+                new RecomendacionItem("Bohemian Rhapsody", "Queen", "rock", "x")), "OLLAMA", "v2");
+        providerAnswers(CompletableFuture.completedFuture(onlyKnown));
+
+        RecommendationResponse first = service.recomendar("Rock", OWNER_A);
+        service.recomendar("Rock", OWNER_A);
+
+        assertThat(first.fallback()).isTrue();
+        assertThat(first.motivoFallback()).isEqualTo("INVALID_RESPONSE");
+        assertThat(providerCalls).hasValue(2);
+    }
+
+    @Test
+    void fallbackSuggestions_neverIncludeASongTheUserAlreadyHas() {
+        // The curated rock catalog contains Bohemian Rhapsody, which this playlist already has
+        RecommendationResult catalogFallback = RecommendationResult.fallback(
+                new FallbackCatalog().suggestionsFor("rock"), "TIMEOUT", "v2");
+        providerAnswers(CompletableFuture.completedFuture(catalogFallback));
+
+        RecommendationResponse response = service.recomendar("Rock", OWNER_A);
+
+        assertThat(response.fallback()).isTrue();
+        assertThat(response.recomendaciones()).extracting(RecomendacionItem::titulo)
+                .doesNotContain("Bohemian Rhapsody").isNotEmpty();
+    }
     private static void sleep(long millis) {
         try {
             Thread.sleep(millis);

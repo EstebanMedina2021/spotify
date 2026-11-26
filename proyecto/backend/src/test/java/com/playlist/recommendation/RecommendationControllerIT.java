@@ -73,7 +73,7 @@ class RecommendationControllerIT {
         when(aiRecommendationClient.recommend(any(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(
                         RecommendationResult.ok(
-                                List.of(new RecomendacionItem("Test", "Artist", "Rock", "razón")),
+                                List.of(new RecomendacionItem("Nueva Cancion", "Otro Artista", "Rock", "razón")),
                                 "MOCK",
                                 "v1")));
 
@@ -82,7 +82,7 @@ class RecommendationControllerIT {
                 .andExpect(jsonPath("$.playlistNombre").value("Lista Rock"))
                 .andExpect(jsonPath("$.fallback").value(false))
                 .andExpect(jsonPath("$.motivoFallback").doesNotExist())
-                .andExpect(jsonPath("$.recomendaciones[0].titulo").value("Test"));
+                .andExpect(jsonPath("$.recomendaciones[0].titulo").value("Nueva Cancion"));
     }
 
     @Test
@@ -178,7 +178,7 @@ class RecommendationControllerIT {
         when(aiRecommendationClient.recommend(any(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(
                         RecommendationResult.ok(
-                                List.of(new RecomendacionItem("Test", "Artist", "Rock", "r")),
+                                List.of(new RecomendacionItem("Nueva Cancion", "Otro Artista", "Rock", "r")),
                                 "MOCK",
                                 "v1")));
 
