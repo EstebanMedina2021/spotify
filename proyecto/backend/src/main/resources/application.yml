@@ -1,5 +1,12 @@
 spring:
   ai:
+    retry:
+      # No retries: default backoff (up to ~minutes) outlives the 5 s TimeLimiter and
+      # keeps worker threads busy. Resilience is handled by the circuit breaker + fallback.
+      max-attempts: 1
+    model:
+      # none (mock) | google-genai (AI_PROVIDER=gemini) | ollama (AI_PROVIDER=ollama)
+      chat: ${SPRING_AI_MODEL_CHAT:none}
     google:
       genai:
         api-key: ${GEMINI_AI_API_KEY:}
@@ -107,3 +114,5 @@ app:
     lists: 60
     recommendations: 5
     spotify: 30
+    logout: 30
+    me: 60
