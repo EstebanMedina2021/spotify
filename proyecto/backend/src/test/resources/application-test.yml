@@ -18,6 +18,12 @@ spring:
     console:
       enabled: false
 
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.image.GoogleGenAiImageConnectionAutoConfiguration
+
 app:
   jwt:
     secret: test-secret-key-must-be-at-least-thirty-two-characters-long-for-hs256
@@ -33,8 +39,8 @@ app:
     base-url: https://api.spotify.com/v1
     accounts-url: https://accounts.spotify.com
   rate-limit:
-    login-per-ip: 5
-    login-per-user: 5
-    lists: 60
-    recommendations: 5
-    spotify: 30
+    login-per-ip: 1000
+    login-per-user: 1000
+    lists: 1000
+    recommendations: 1000
+    spotify: 1000

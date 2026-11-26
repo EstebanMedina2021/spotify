@@ -5,6 +5,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -24,4 +25,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                 user.isEnabled()
         );
     }
+
+    public AuthenticatedUser loadUserById(UUID id) {
+    return userRepository.findById(id)
+            .map(u -> new AuthenticatedUser(u.getId(), u.getUsername(), u.getPasswordHash(), u.isEnabled()))
+            .orElseThrow(() -> new UsernameNotFoundException("User not found by id: " + id));
+}
 }
