@@ -1,0 +1,775 @@
+{
+  "info": {
+    "name": "Playlist API",
+    "description": "Coleccion de la API de playlists (Spring Boot). Ejecutala en orden: cada carpeta depende de la anterior.\n\nAntes de empezar: arranca el backend (perfil dev) y revisa las variables de la coleccion: baseUrl, username, password.\nEl usuario demo/Demo1234! es una credencial de demostracion que solo existe en el perfil dev.\n\nSeguridad: el JWT va en la cookie HttpOnly access_token y la proteccion CSRF exige la cabecera X-XSRF-TOKEN con el valor de la cookie XSRF-TOKEN. Los scripts de la coleccion guardan el token tras cada respuesta (variable xsrfToken) y lo agregan solos a POST/PUT/PATCH/DELETE.\nPostman debe tener activado el manejo automatico de cookies (por defecto lo esta).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "username",
+      "value": "demo"
+    },
+    {
+      "key": "password",
+      "value": "Demo1234!"
+    },
+    {
+      "key": "listName",
+      "value": "ListaDemo"
+    },
+    {
+      "key": "emptyListName",
+      "value": "ListaVacia"
+    },
+    {
+      "key": "xsrfToken",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const xsrf = pm.cookies.get(\"XSRF-TOKEN\");",
+          "if (xsrf) { pm.collectionVariables.set(\"xsrfToken\", xsrf); }"
+        ]
+      }
+    },
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const unsafe = [\"POST\", \"PUT\", \"PATCH\", \"DELETE\"];",
+          "const token = pm.collectionVariables.get(\"xsrfToken\");",
+          "if (unsafe.includes(pm.request.method) && token && !pm.request.headers.has(\"X-XSRF-TOKEN\")) {",
+          "  pm.request.headers.add({ key: \"X-XSRF-TOKEN\", value: token });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - Preparacion (CSRF)",
+      "description": "Obtiene la cookie XSRF-TOKEN. El backend la emite en cualquier peticion, aun sin sesion.",
+      "item": [
+        {
+          "name": "GET /auth/me sin sesion -> 401 y cookie XSRF-TOKEN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"El backend emite la cookie XSRF-TOKEN\", () => pm.expect(pm.cookies.get(\"XSRF-TOKEN\")).to.be.a(\"string\").and.not.empty);",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Cuerpo de error uniforme\", () => pm.expect(body.codigo).to.eql(\"UNAUTHORIZED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Autenticacion",
+      "description": "El JWT viaja en la cookie HttpOnly access_token (Postman la guarda sola). El token nunca va en el cuerpo.",
+      "item": [
+        {
+          "name": "POST /auth/login -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Cuerpo con username y expiresAt, sin token\", () => { pm.expect(body.username).to.eql(pm.collectionVariables.get(\"username\")); pm.expect(body.expiresAt).to.be.a(\"string\"); pm.expect(body).to.not.have.property(\"token\"); pm.expect(body).to.not.have.property(\"access_token\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /auth/login con credenciales malas -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"INVALID_CREDENTIALS\", () => pm.expect(body.codigo).to.eql(\"INVALID_CREDENTIALS\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"incorrecta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /auth/me con sesion -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Devuelve el usuario y la expiracion\", () => { pm.expect(body.username).to.eql(pm.collectionVariables.get(\"username\")); pm.expect(body.expiresAt).to.be.a(\"string\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Listas (/lists)",
+      "item": [
+        {
+          "name": "POST /lists -> 201 con Location",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Cabecera Location\", () => pm.expect(pm.response.headers.get(\"Location\")).to.include(\"/lists/\"));",
+                  "pm.test(\"Devuelve la lista con sus canciones\", () => { pm.expect(body.nombre).to.eql(pm.collectionVariables.get(\"listName\")); pm.expect(body.canciones).to.have.length(3); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/lists",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"{{listName}}\",\n  \"descripcion\": \"Lista creada desde Postman\",\n  \"canciones\": [\n    {\n      \"titulo\": \"Bohemian Rhapsody\",\n      \"artista\": \"Queen\",\n      \"album\": \"A Night at the Opera\",\n      \"anno\": \"1975\",\n      \"genero\": \"rock\"\n    },\n    {\n      \"titulo\": \"Stairway to Heaven\",\n      \"artista\": \"Led Zeppelin\",\n      \"album\": \"Led Zeppelin IV\",\n      \"anno\": \"1971\",\n      \"genero\": \"rock\"\n    },\n    {\n      \"titulo\": \"Hotel California\",\n      \"artista\": \"Eagles\",\n      \"album\": \"Hotel California\",\n      \"anno\": \"1976\",\n      \"genero\": \"rock\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /lists duplicada -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", () => pm.response.to.have.status(409));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"PLAYLIST_DUPLICATED\", () => pm.expect(body.codigo).to.eql(\"PLAYLIST_DUPLICATED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/lists",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"{{listName}}\",\n  \"canciones\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /lists con nombre vacio -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"VALIDATION_ERROR\", () => pm.expect(body.codigo).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/lists",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"   \",\n  \"canciones\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /lists con caracter de control -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"VALIDATION_ERROR, no 500\", () => pm.expect(body.codigo).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/lists",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"nombre\": \"mala\\u0007lista\", \"canciones\": []}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /lists crea una lista vacia -> 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/lists",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"{{emptyListName}}\",\n  \"canciones\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /lists -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Contiene la lista creada con su numero de canciones\", () => { const l = body.find(x => x.nombre === pm.collectionVariables.get(\"listName\")); pm.expect(l).to.exist; pm.expect(l.numeroCanciones).to.eql(3); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/lists"
+          }
+        },
+        {
+          "name": "GET /lists/{listName} -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Canciones en orden\", () => pm.expect(body.canciones.map(c => c.titulo)).to.eql([\"Bohemian Rhapsody\", \"Stairway to Heaven\", \"Hotel California\"]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/lists/{{listName}}"
+          }
+        },
+        {
+          "name": "GET /lists/{listName} inexistente -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"PLAYLIST_NOT_FOUND\", () => pm.expect(body.codigo).to.eql(\"PLAYLIST_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/lists/NoExiste"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Recomendaciones con IA",
+      "description": "Con AI_PROVIDER=mock responde al instante. Con un LLM local (Ollama) puede tardar 5-30 s: Postman no corta la peticion, pero el backend aplica AI_TIMEOUT_SECONDS y, si se agota, responde 200 con fallback=true (nunca 500).",
+      "item": [
+        {
+          "name": "GET /lists/{listName}/recommendations -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Estructura del contrato\", () => { pm.expect(body.recomendaciones).to.be.an(\"array\").that.is.not.empty; pm.expect(body).to.have.property(\"fallback\"); pm.expect(body).to.have.property(\"promptVersion\"); });",
+                  "pm.test(\"Regla: motivoFallback solo cuando fallback=true\", () => { if (body.fallback) { pm.expect(body.motivoFallback).to.be.a(\"string\"); } else { pm.expect(body.motivoFallback).to.be.null; } });",
+                  "pm.test(\"No recomienda canciones que la lista ya tiene\", () => { const mine = [\"bohemian rhapsody\", \"stairway to heaven\", \"hotel california\"]; body.recomendaciones.forEach(r => pm.expect(mine).to.not.include(r.titulo.toLowerCase())); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/lists/{{listName}}/recommendations"
+          }
+        },
+        {
+          "name": "GET /lists/{emptyList}/recommendations -> 200 sin fallback",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Lista vacia: mensaje informativo, sin fallback\", () => { pm.expect(body.recomendaciones).to.be.empty; pm.expect(body.fallback).to.be.false; pm.expect(body.motivoFallback).to.be.null; pm.expect(body.mensaje).to.be.a(\"string\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/lists/{{emptyListName}}/recommendations"
+          }
+        },
+        {
+          "name": "GET /lists/NoExiste/recommendations -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"PLAYLIST_NOT_FOUND\", () => pm.expect(body.codigo).to.eql(\"PLAYLIST_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/lists/NoExiste/recommendations"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Spotify",
+      "description": "La busqueda real necesita SPOTIFY_CLIENT_ID y SPOTIFY_CLIENT_SECRET en el backend; sin ellas responde 503 SPOTIFY_UNAVAILABLE. Los generos siempre responden 200: si el endpoint de Spotify no esta disponible para la app, se devuelve la lista curada con fallback=true.",
+      "item": [
+        {
+          "name": "GET /spotify/genres -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Lista de generos y bandera de fallback\", () => { pm.expect(body.generos).to.be.an(\"array\").that.is.not.empty; pm.expect(body).to.have.property(\"fallback\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/spotify/genres"
+          }
+        },
+        {
+          "name": "GET /spotify/search?q=queen&limit=3 -> 200 (503 sin credenciales)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 con resultados, o 503 si el backend no tiene credenciales de Spotify\", () => pm.expect(pm.response.code).to.be.oneOf([200, 503]));",
+                  "if (pm.response.code === 200) { const body = pm.response.json(); pm.test(\"Resultados con titulo, artista, album y spotifyId\", () => { pm.expect(body.resultados).to.be.an(\"array\"); body.resultados.forEach(r => { pm.expect(r).to.have.all.keys(\"titulo\", \"artista\", \"album\", \"spotifyId\"); }); }); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/spotify/search?q=queen&limit=3"
+          }
+        },
+        {
+          "name": "GET /spotify/search?q= vacio -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"VALIDATION_ERROR\", () => pm.expect(body.codigo).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/spotify/search?q="
+          }
+        },
+        {
+          "name": "GET /spotify/search limit=11 -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"VALIDATION_ERROR\", () => pm.expect(body.codigo).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/spotify/search?q=queen&limit=11"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Seguridad y errores",
+      "item": [
+        {
+          "name": "POST /lists con token CSRF falso -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 403\", () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"CSRF_INVALID\", () => pm.expect(body.codigo).to.eql(\"CSRF_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "token-falso"
+              }
+            ],
+            "url": "{{baseUrl}}/lists",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"NoDeberiaCrearse\",\n  \"canciones\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /ruta/inexistente -> 404 (no 500)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"NOT_FOUND\", () => pm.expect(body.codigo).to.eql(\"NOT_FOUND\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/ruta/inexistente"
+          }
+        },
+        {
+          "name": "PUT /lists -> 405 (no 500)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 405\", () => pm.response.to.have.status(405));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"METHOD_NOT_ALLOWED\", () => pm.expect(body.codigo).to.eql(\"METHOD_NOT_ALLOWED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{baseUrl}}/lists"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Limpieza y cierre de sesion",
+      "item": [
+        {
+          "name": "DELETE /lists/{listName} -> 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/lists/{{listName}}"
+          }
+        },
+        {
+          "name": "DELETE /lists/{listName} otra vez -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/lists/{{listName}}"
+          }
+        },
+        {
+          "name": "DELETE /lists/{emptyList} -> 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/lists/{{emptyListName}}"
+          }
+        },
+        {
+          "name": "POST /auth/logout -> 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/auth/logout"
+          }
+        },
+        {
+          "name": "GET /lists tras cerrar sesion -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"UNAUTHORIZED\", () => pm.expect(body.codigo).to.eql(\"UNAUTHORIZED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/lists"
+          }
+        }
+      ]
+    }
+  ]
+}

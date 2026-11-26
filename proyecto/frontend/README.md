@@ -1,59 +1,15 @@
-# Frontend
+# Frontend (Angular 22)
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.3.0.
-
-## Development server
-
-To start a local development server, run:
+Aplicación web de la API de playlists. La documentación completa (arquitectura, variables, seguridad) está en el [README del repositorio](../../README.md).
 
 ```bash
-ng serve
+npm install
+npx ng serve                  # http://localhost:4200  (necesita el backend en :8080)
+npx ng test --watch=false     # pruebas (Vitest)
+npx ng build                  # build de producción en dist/
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+- `proxy.conf.json` reenvía `/api/*` al backend en `:8080`, de modo que el navegador usa un solo origen (cookies y CSRF sin CORS).
+- La URL base de la API se toma de `src/environments/`.
+- Estructura de `src/app/`: `core/` (servicios, interceptores, guard, modelos), `layout/` (sidebar, barra superior, barra del reproductor), `shared/` (componentes reutilizables sin llamadas HTTP) y `pages/` (login, inicio, lista, búsqueda, crear lista).
+- El reproductor no reproduce audio: la API no tiene fuente de audio, por eso sus controles están deshabilitados.
