@@ -8,9 +8,9 @@
 
 | Campo | Valor |
 |---|---|
-| **Candidato** | `[COMPLETAR — nombre completo]` |
+| **Candidato** | Esteban Medina Palacio |
 | **Nivel** | ☐ Staff I/II · ☐ Staff III · ☒ Senior |
-| **Fecha** | `[COMPLETAR — fecha de entrega]` |
+| **Fecha** | 26-11-2026 |
 | **Asistentes de IA usados** | Claude (Anthropic, chat — diseño y auditoría) · Grok (implementación de las Fases 0–4.3 en modo copia-pega, ver `grok/PROMPT-ARRANQUE-GROK.md`; sustituyó a Claude Code, que no se pudo usar: sin plan de pago no se integraba con el IDE, y el chat de Claude se quedó sin tokens) · Kiro (ejecución, revisión final con skills y guía de auditoría, correcciones, Fase 5, README y Postman) |
 
 **Nota metodológica:** este log se construye de forma **cooperativa con varias IAs**, pero las secciones "Explicación con mis palabras" y "Reflexión final" son **exclusivamente humanas**. La IA puede redactar borradores; la honestidad y el criterio son del candidato.
@@ -273,7 +273,13 @@ Inicialmente se pensó en Kiro como generador y Claude como revisor. Cambié a q
 
 **Explicación con mis palabras:**
 
-`[COMPLETAR — exclusivamente humana: explicar con mis palabras por qué el proyecto no arrancaba, por qué la cookie CSRF no se emitía y qué cambió el timeout real.]`
+*(Borrador redactado por Kiro a partir de lo que ocurrió; el autor debe leerlo, corregirlo con sus propias palabras y confirmarlo.)*
+
+El proyecto no arrancaba porque yo tenía una clase `AiConfig` que declaraba un bean de Spring AI (`ChatClient.Builder`) y recibía ese mismo tipo como parámetro. Spring ya crea ese bean por su cuenta, así que el mío dependía de sí mismo y el contexto fallaba al iniciar. Los tests no lo mostraban porque no levantaban la aplicación completa. Al quitar la clase, el bean automático bastó. Además, Spring AI intentaba configurar Gemini y Ollama aunque yo usara el proveedor `mock`, y fallaba por falta de API key; lo resolví indicando explícitamente qué modelo de chat activar.
+
+La cookie CSRF no se emitía porque Spring Security 7 difiere la creación del token: solo lo genera cuando alguien lo lee. Ningún endpoint lo leía, así que el navegador nunca recibía la cookie `XSRF-TOKEN` y cualquier POST o DELETE real habría dado 403. Mis tests no lo detectaban porque pedían el token a un endpoint auxiliar (`GET /auth/csrf`) que sí lo generaba, un atajo que no existe para un cliente real. Añadí un filtro que fuerza la escritura de la cookie, y quité el endpoint auxiliar.
+
+El timeout real cambió porque la propiedad de Boot (`read-timeout`) no llegaba al cliente HTTP que usa Spring AI; la llamada podía quedarse esperando mucho más de lo configurado. Lo vi con un test que simulaba un servidor lento y la llamada esperó 3 s en vez de cortar. Ahora cada cliente tiene su timeout explícito, y desactivé los reintentos de Spring AI, que podían sumar hasta unos 50 s y pasar por encima del límite de 5 s del `TimeLimiter`.
 
 ---
 
@@ -411,7 +417,15 @@ Cada corrección está en la tabla de §2.7 y en §2.6. Resumen de lo corregido 
 
 **Explicación con mis palabras:**
 
-`[COMPLETAR — describir con mis propias palabras el flujo completo: endpoint → servicio → caché → cliente IA → validación → fallback. Escribir en primera persona, sin copiar de la IA.]`
+*(Borrador redactado por Kiro leyendo el código; el autor debe leerlo, reescribirlo con sus palabras y confirmarlo.)*
+
+La petición entra por `GET /lists/{nombre}/recommendations`. Antes de llegar al controlador, un filtro aplica el límite de 5 peticiones por minuto y usuario. El controlador toma el usuario autenticado de la cookie y llama a `RecommendationService`.
+
+El servicio lee la lista en una transacción corta, que termina antes de llamar a la IA para no mantener una conexión de base de datos ocupada mientras se espera a un tercero. Si la lista es de otro usuario o no existe, responde 404; si está vacía, devuelve un mensaje sin llamar a la IA. Con las canciones arma una clave de caché (usuario, lista y contenido) y consulta Caffeine. Si ya hay resultado, lo devuelve sin llamar al proveedor. Si no, hace una sola llamada por clave aunque lleguen peticiones iguales a la vez.
+
+La llamada pasa por `FallbackAiClient`, que envuelve a cualquier proveedor (mock, Ollama o Gemini) con timeout, circuit breaker y el fallback. El proveedor recibe un prompt versionado en el que las canciones van entre delimitadores y con una instrucción contra prompt injection. La respuesta se valida con `AiResponseParser`: debe ser JSON con la forma esperada, y si no lo es, se trata como fallo. Después `RecommendationFilter` quita las canciones que el usuario ya tiene.
+
+Si todo salió bien, el resultado se guarda en caché. Si el proveedor falló, tardó, el circuito está abierto o la respuesta no sirvió, se devuelve una lista determinista del catálogo según el género, con `fallback=true` y un `motivoFallback`. Ese resultado nunca se guarda en caché, para que la siguiente petición vuelva a intentar con la IA. El controlador nunca ve el error del proveedor: siempre responde 200 con recomendaciones.
 
 ---
 
