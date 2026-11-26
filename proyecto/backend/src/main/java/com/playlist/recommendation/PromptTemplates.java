@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class PromptTemplates {
 
+    static final String PLACEHOLDER = "{{canciones}}";
     private static final int MAX_CANCIONES = 20;
     private static final int MAX_CHARS_BLOQUE = 2000;
 
@@ -26,6 +27,10 @@ public class PromptTemplates {
     @PostConstruct
     void load() throws IOException {
         this.template = new String(promptResource.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        if (!template.contains(PLACEHOLDER)) {
+            // Fail at startup instead of silently sending a prompt without the songs.
+            throw new IllegalStateException("Prompt template has no " + PLACEHOLDER + " placeholder");
+        }
         String filename = promptResource.getFilename(); // recommendations-v1.txt
         this.promptVersion = filename.replace("recommendations-", "").replace(".txt", ""); // v1
     }
@@ -37,20 +42,22 @@ public class PromptTemplates {
     public String buildPrompt(List<CancionSnapshot> canciones) {
         String bloque = canciones.stream()
                 .limit(MAX_CANCIONES)
-                .map(c -> String.format("- %s - %s - %s",
-                        safe(c.titulo()),
-                        safe(c.artista()),
-                        safe(c.genero())))
+                .map(c -> "- " + clean(c.titulo()) + " - " + clean(c.artista()) + " - " + clean(c.genero()))
                 .collect(Collectors.joining("\n"));
 
         if (bloque.length() > MAX_CHARS_BLOQUE) {
             bloque = bloque.substring(0, MAX_CHARS_BLOQUE);
         }
 
-        return template.replace("%s", bloque);
+        // replace(), not format(): song data may contain '%' or '{{' and must stay literal data.
+        return template.replace(PLACEHOLDER, bloque);
     }
 
-    private String safe(String value) {
-        return value == null || value.isBlank() ? "desconocido" : value;
+    /** Neutralizes angle brackets and control characters so song data cannot close the <canciones> block. */
+    private String clean(String value) {
+        if (value == null || value.isBlank()) {
+            return "desconocido";
+        }
+        return value.replace('<', '\u2039').replace('>', '\u203A').replaceAll("\\p{Cntrl}", " ");
     }
 }

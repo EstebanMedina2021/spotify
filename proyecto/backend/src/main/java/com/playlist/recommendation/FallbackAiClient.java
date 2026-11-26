@@ -1,20 +1,18 @@
 package com.playlist.recommendation;
 
-import com.playlist.recommendation.exception.AiInvalidResponseException;
-import com.playlist.recommendation.exception.AiProviderAuthException;
-import com.playlist.recommendation.exception.AiProviderException;
-import com.playlist.recommendation.exception.AiProviderTimeoutException;
-import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
+/**
+ * Decorator that adds timeout, circuit breaker and a deterministic fallback to any provider.
+ * It never propagates a provider failure: the returned future always completes normally.
+ */
 @Slf4j
 @Component
 @Primary
@@ -42,57 +40,24 @@ public class FallbackAiClient implements AiRecommendationClient {
     @Override
     public CompletableFuture<RecommendationResult> recommend(List<CancionSnapshot> canciones, String promptVersion) {
         try {
-            // executeCompletionStage requiere scheduler + Supplier<CompletionStage>
-            CompletableFuture<RecommendationResult> future = timeLimiter
-                    .executeCompletionStage(scheduler, () -> delegate.recommend(canciones, promptVersion))
-                    .toCompletableFuture();
-
-            // Envolver con circuit breaker: si el CB está abierto, lanza CallNotPermittedException
-            CompletableFuture<RecommendationResult> withCb = circuitBreaker.executeCompletionStage(
-                    () -> future
-            ).toCompletableFuture();
-
-            return withCb.handle((result, throwable) -> {
-                if (throwable == null) {
-                    return result;
-                }
-                return fallback(canciones, promptVersion, throwable);
-            });
-        } catch (CallNotPermittedException ex) {
-            return CompletableFuture.completedFuture(fallback(canciones, promptVersion, ex));
-        } catch (Exception ex) {
+            // The breaker is the outer layer: when it is OPEN the provider call is never started.
+            // The time limit sits inside so a timeout also counts as a breaker failure.
+            return circuitBreaker
+                    .executeCompletionStage(() -> timeLimiter.executeCompletionStage(
+                            scheduler, () -> delegate.recommend(canciones, promptVersion)))
+                    .toCompletableFuture()
+                    .handle((result, throwable) ->
+                            throwable == null ? result : fallback(canciones, promptVersion, throwable));
+        } catch (RuntimeException ex) {
             return CompletableFuture.completedFuture(fallback(canciones, promptVersion, ex));
         }
     }
 
     private RecommendationResult fallback(List<CancionSnapshot> canciones, String promptVersion, Throwable throwable) {
-        Throwable cause = unwrap(throwable);
-        String motivo;
-        if (cause instanceof AiProviderTimeoutException || cause instanceof TimeoutException) {
-            motivo = "TIMEOUT";
-        } else if (cause instanceof AiProviderAuthException) {
-            motivo = "PROVIDER_AUTH_ERROR";
-        } else if (cause instanceof AiProviderException) {
-            motivo = "PROVIDER_DOWN";
-        } else if (cause instanceof AiInvalidResponseException) {
-            motivo = "INVALID_RESPONSE";
-        } else if (cause instanceof CallNotPermittedException) {
-            motivo = "CIRCUIT_OPEN";
-        } else {
-            motivo = "PROVIDER_DOWN";
-        }
-
-        log.warn("AI fallback triggered: motivo={}, cause={}", motivo, cause.getClass().getSimpleName());
+        String motivo = AiFailureClassifier.motivoFor(throwable);
+        log.warn("AI fallback triggered: motivo={}, cause={}", motivo, throwable.getClass().getSimpleName());
 
         String genero = fallbackCatalog.firstGenre(canciones);
-        List<RecomendacionItem> items = fallbackCatalog.suggestionsFor(genero);
-        return RecommendationResult.fallback(items, motivo, promptVersion);
-    }
-
-    private Throwable unwrap(Throwable t) {
-        while (t.getCause() != null && t != t.getCause()) {
-            t = t.getCause();
-        }
-        return t;
+        return RecommendationResult.fallback(fallbackCatalog.suggestionsFor(genero), motivo, promptVersion);
     }
 }

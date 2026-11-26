@@ -6,18 +6,12 @@ import com.playlist.common.exception.PlaylistNotFoundException;
 import com.playlist.playlist.Playlist;
 import com.playlist.playlist.PlaylistRepository;
 import com.playlist.recommendation.dto.RecommendationResponse;
-import com.playlist.recommendation.exception.AiInvalidResponseException;
-import com.playlist.recommendation.exception.AiProviderAuthException;
-import com.playlist.recommendation.exception.AiProviderException;
-import com.playlist.recommendation.exception.AiProviderTimeoutException;
-import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -96,9 +90,8 @@ public class RecommendationService {
             return toResponse(playlist.getNombre(), result, mensaje);
         } catch (Exception ex) {
             // Defensa en profundidad: si el cliente IA falla, generamos fallback local.
-            Throwable cause = unwrapCompletion(ex);
-            String motivo = mapExceptionToMotivo(cause);
-            log.warn("AI client failed: motivo={}, cause={}", motivo, cause.getClass().getSimpleName());
+            String motivo = AiFailureClassifier.motivoFor(ex);
+            log.warn("AI client failed: motivo={}, cause={}", motivo, ex.getClass().getSimpleName());
 
             RecommendationResult fallbackResult = RecommendationResult.fallback(
                     fallbackCatalog.suggestionsFor(fallbackCatalog.firstGenre(canciones)),
@@ -108,32 +101,6 @@ public class RecommendationService {
             return toResponse(playlist.getNombre(), fallbackResult,
                     buildFallbackMessage(motivo));
         }
-    }
-
-    private Throwable unwrapCompletion(Throwable t) {
-        if (t instanceof CompletionException && t.getCause() != null) {
-            return t.getCause();
-        }
-        return t;
-    }
-
-    private String mapExceptionToMotivo(Throwable cause) {
-        if (cause instanceof AiProviderTimeoutException) {
-            return "TIMEOUT";
-        }
-        if (cause instanceof AiProviderAuthException) {
-            return "PROVIDER_AUTH_ERROR";
-        }
-        if (cause instanceof AiInvalidResponseException) {
-            return "INVALID_RESPONSE";
-        }
-        if (cause instanceof AiProviderException) {
-            return "PROVIDER_DOWN";
-        }
-        if (cause instanceof CallNotPermittedException) {
-            return "CIRCUIT_OPEN";
-        }
-        return "PROVIDER_DOWN";
     }
 
     private RecommendationResponse toResponse(String playlistNombre, RecommendationResult result, String mensaje) {
