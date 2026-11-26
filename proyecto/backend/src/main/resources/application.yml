@@ -76,6 +76,9 @@ app:
     issuer: ${JWT_ISSUER:playlist-api}
   ai:
     provider: ${AI_PROVIDER:mock}
+    timeout-seconds: 5
+    mock:
+      scenario: OK
   cors:
     allowed-origin: ${FRONTEND_ORIGIN:http://localhost:4200}
   spotify:

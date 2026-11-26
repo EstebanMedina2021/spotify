@@ -31,6 +31,8 @@ app:
     issuer: playlist-api-test
   ai:
     provider: mock
+    mock:
+      scenario: OK
   cors:
     allowed-origin: http://localhost:4200
   spotify:
