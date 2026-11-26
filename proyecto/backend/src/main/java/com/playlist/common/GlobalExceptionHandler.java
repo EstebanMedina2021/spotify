@@ -2,6 +2,8 @@ package com.playlist.common;
 
 import com.playlist.common.exception.DuplicatePlaylistException;
 import com.playlist.common.exception.PlaylistNotFoundException;
+import com.playlist.common.exception.RateLimitExceededException;
+
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.stream.Collectors;
@@ -15,6 +17,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.playlist.common.exception.RateLimitExceededException;
 
 @Slf4j
 @RestControllerAdvice
@@ -70,6 +73,20 @@ public class GlobalExceptionHandler {
                 "Error interno", request);
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimit(
+            RateLimitExceededException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", "60")
+                .body(new ErrorResponse(
+                        ErrorCodes.RATE_LIMITED,
+                        "Demasiadas solicitudes",
+                        Instant.now(),
+                        request.getRequestURI()
+                ));
+    }
+
+    
     private ResponseEntity<ErrorResponse> build(HttpStatus status, String codigo,
                                                  String mensaje, HttpServletRequest request) {
         ErrorResponse body = new ErrorResponse(
