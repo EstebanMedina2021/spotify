@@ -73,7 +73,7 @@ Versiones resueltas con `./mvnw dependency:tree` y `package.json`.
 
 ## Puesta en marcha
 
-Requisitos: **JDK 25** y **Node 22+**. No hace falta ninguna credencial para el arranque rápido (el proveedor de IA por defecto es `mock`).
+Requisitos: **JDK 25** (con `JAVA_HOME` apuntando a él, o `java` en el `PATH`; el wrapper `mvnw` lo necesita) y **Node 22+**. No hace falta ninguna credencial para el arranque rápido (el proveedor de IA por defecto es `mock`).
 
 ### Backend
 
