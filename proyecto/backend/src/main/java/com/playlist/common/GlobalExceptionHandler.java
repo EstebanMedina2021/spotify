@@ -14,7 +14,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authentication.BadCredentialsException;
+import com.playlist.spotify.exception.SpotifyRateLimitedException;
+import com.playlist.spotify.exception.SpotifyUnavailableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.playlist.common.exception.RateLimitExceededException;
@@ -63,6 +68,44 @@ public class GlobalExceptionHandler {
         log.warn("Data integrity violation on {}", request.getRequestURI());
         return build(HttpStatus.CONFLICT, ErrorCodes.PLAYLIST_DUPLICATED,
                 "Conflicto de datos", request);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponse> handleMethodValidation(
+            HandlerMethodValidationException ex, HttpServletRequest request) {
+        String mensaje = ex.getParameterValidationResults().stream()
+                .flatMap(result -> result.getResolvableErrors().stream()
+                        .map(error -> result.getMethodParameter().getParameterName()
+                                + ": " + error.getDefaultMessage()))
+                .collect(Collectors.joining("; "));
+        return build(HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_ERROR, mensaje, request);
+    }
+
+    @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<ErrorResponse> handleBadParameter(
+            Exception ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_ERROR,
+                "Parámetro inválido o ausente", request);
+    }
+
+    @ExceptionHandler(SpotifyRateLimitedException.class)
+    public ResponseEntity<ErrorResponse> handleSpotifyRateLimited(
+            SpotifyRateLimitedException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(new ErrorResponse(
+                        ErrorCodes.SPOTIFY_RATE_LIMITED,
+                        "Spotify está limitando las solicitudes. Intenta de nuevo más tarde.",
+                        Instant.now(),
+                        request.getRequestURI()));
+    }
+
+    @ExceptionHandler(SpotifyUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleSpotifyUnavailable(
+            SpotifyUnavailableException ex, HttpServletRequest request) {
+        log.warn("Spotify unavailable on {}: {}", request.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.SERVICE_UNAVAILABLE, ErrorCodes.SPOTIFY_UNAVAILABLE,
+                "Spotify no está disponible en este momento", request);
     }
 
     @ExceptionHandler(Exception.class)
