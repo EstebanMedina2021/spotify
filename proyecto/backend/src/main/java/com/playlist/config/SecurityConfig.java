@@ -20,6 +20,7 @@ import org.springframework.core.convert.converter.Converter;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -42,6 +43,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfException;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -148,6 +150,24 @@ public class SecurityConfig {
         return new CsrfTokenRequestAttributeHandler();
     }
 
+    /**
+     * The StrictHttpFirewall rejects malformed URLs (control characters, encoded slashes...) before
+     * any controller runs. Answer with the uniform ErrorResponse instead of an empty 400.
+     */
+    @Bean
+    public RequestRejectedHandler requestRejectedHandler() {
+        return (request, response, rejected) -> {
+            response.setStatus(HttpStatus.BAD_REQUEST.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            ErrorResponse body = new ErrorResponse(
+                    "VALIDATION_ERROR",
+                    "La URL contiene caracteres no permitidos",
+                    Instant.now(),
+                    request.getRequestURI()
+            );
+            objectMapper.writeValue(response.getOutputStream(), body);
+        };
+    }
     @Bean
     public JwtDecoder jwtDecoder() {
         SecretKey secretKey = secretKey();

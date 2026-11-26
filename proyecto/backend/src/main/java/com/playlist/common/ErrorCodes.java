@@ -13,6 +13,10 @@ public final class ErrorCodes {
     public static final String SPOTIFY_RATE_LIMITED = "SPOTIFY_RATE_LIMITED";
     public static final String SPOTIFY_UNAVAILABLE = "SPOTIFY_UNAVAILABLE";
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+    public static final String NOT_FOUND = "NOT_FOUND";
+    public static final String METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED";
+    public static final String NOT_ACCEPTABLE = "NOT_ACCEPTABLE";
+    public static final String UNSUPPORTED_MEDIA_TYPE = "UNSUPPORTED_MEDIA_TYPE";
 
     private ErrorCodes() {
     }

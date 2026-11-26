@@ -1,16 +1,20 @@
 package com.playlist.playlist.dto;
 
+import com.playlist.common.ValidationPatterns;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record PlaylistRequest(
         @NotBlank(message = "El nombre es obligatorio")
         @Size(max = 50, message = "El nombre no puede superar 50 caracteres")
+        @Pattern(regexp = ValidationPatterns.NO_CONTROL_CHARS, message = ValidationPatterns.NO_CONTROL_CHARS_MESSAGE)
         String nombre,
 
         @Size(max = 200, message = "La descripción no puede superar 200 caracteres")
+        @Pattern(regexp = ValidationPatterns.NO_CONTROL_CHARS, message = ValidationPatterns.NO_CONTROL_CHARS_MESSAGE)
         String descripcion,
 
         @Size(max = 100, message = "La lista no puede tener más de 100 canciones")

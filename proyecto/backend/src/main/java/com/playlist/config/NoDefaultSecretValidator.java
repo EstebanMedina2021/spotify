@@ -3,6 +3,7 @@ package com.playlist.config;
 import com.playlist.auth.JwtProperties;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,6 +47,10 @@ public class NoDefaultSecretValidator implements InitializingBean {
         if (secret == null || secret.isBlank()) {
             throw new IllegalStateException("JWT_SECRET is required and must not be empty");
         }
+        if (looksLikeExamplePlaceholder(secret)) {
+            throw new IllegalStateException(
+                    "JWT_SECRET still holds the example placeholder; generate a real one with: openssl rand -base64 64");
+        }
         byte[] keyBytes;
         try {
             keyBytes = Base64.getDecoder().decode(secret);
@@ -57,6 +62,15 @@ public class NoDefaultSecretValidator implements InitializingBean {
                     "JWT_SECRET must be at least 256 bits (32 bytes). Current length: "
                             + (keyBytes.length * 8) + " bits");
         }
+    }
+
+    /** Values copied from .env.example or documentation are public, so tokens signed with them are forgeable. */
+    private boolean looksLikeExamplePlaceholder(String secret) {
+        String normalized = secret.trim().toLowerCase(Locale.ROOT);
+        return normalized.startsWith("<")
+                || normalized.contains("change-me")
+                || normalized.contains("changeme")
+                || normalized.contains("your-secret");
     }
 
     private void validateAiSecrets() {

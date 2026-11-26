@@ -1,5 +1,6 @@
 package com.playlist.common;
 
+import com.playlist.common.exception.InvalidTextException;
 import java.util.Locale;
 
 public final class TextNormalizer {
@@ -9,7 +10,7 @@ public final class TextNormalizer {
 
     /**
      * Normalizes the input: null stays null, otherwise trim + lowercase (Locale.ROOT).
-     * Rejects control characters (\u0000-\u001F, \u007F) with IllegalArgumentException.
+     * Rejects control characters (\u0000-\u001F, \u007F) with InvalidTextException.
      */
     public static String normalize(String input) {
         if (input == null) {
@@ -20,7 +21,7 @@ public final class TextNormalizer {
     }
 
     /**
-     * Throws IllegalArgumentException if the string contains control characters.
+     * Throws InvalidTextException if the string contains control characters.
      */
     public static void assertNoControlChars(String input, String fieldName) {
         if (input == null) {
@@ -29,7 +30,7 @@ public final class TextNormalizer {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
             if ((c >= '\u0000' && c <= '\u001F') || c == '\u007F') {
-                throw new IllegalArgumentException(
+                throw new InvalidTextException(
                         "Field '" + fieldName + "' contains invalid control character at index " + i);
             }
         }

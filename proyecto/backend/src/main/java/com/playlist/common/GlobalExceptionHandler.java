@@ -1,9 +1,11 @@
 package com.playlist.common;
 
 import com.playlist.common.exception.DuplicatePlaylistException;
+import com.playlist.common.exception.InvalidTextException;
 import com.playlist.common.exception.PlaylistNotFoundException;
 import com.playlist.common.exception.RateLimitExceededException;
 
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.stream.Collectors;
@@ -106,6 +108,51 @@ public class GlobalExceptionHandler {
         log.warn("Spotify unavailable on {}: {}", request.getRequestURI(), ex.getMessage());
         return build(HttpStatus.SERVICE_UNAVAILABLE, ErrorCodes.SPOTIFY_UNAVAILABLE,
                 "Spotify no está disponible en este momento", request);
+    }
+
+    @ExceptionHandler(InvalidTextException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidText(
+            InvalidTextException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_ERROR,
+                "El texto contiene caracteres no permitidos", request);
+    }
+
+    /**
+     * Spring MVC protocol errors (unknown route, wrong method, unsupported media type...) carry
+     * their own HTTP status through {@link org.springframework.web.ErrorResponse}. They are client
+     * errors and must not be reported as 500.
+     */
+    @ExceptionHandler(ServletException.class)
+    public ResponseEntity<ErrorResponse> handleServletException(
+            ServletException ex, HttpServletRequest request) {
+        if (!(ex instanceof org.springframework.web.ErrorResponse protocolError)) {
+            return handleGeneric(ex, request);
+        }
+        HttpStatus status = HttpStatus.valueOf(protocolError.getStatusCode().value());
+        log.warn("{} {} -> {}", request.getMethod(), request.getRequestURI(), status.value());
+        ErrorResponse body = new ErrorResponse(
+                codeFor(status), messageFor(status), Instant.now(), request.getRequestURI());
+        return ResponseEntity.status(status).headers(protocolError.getHeaders()).body(body);
+    }
+
+    private static String codeFor(HttpStatus status) {
+        return switch (status) {
+            case NOT_FOUND -> ErrorCodes.NOT_FOUND;
+            case METHOD_NOT_ALLOWED -> ErrorCodes.METHOD_NOT_ALLOWED;
+            case NOT_ACCEPTABLE -> ErrorCodes.NOT_ACCEPTABLE;
+            case UNSUPPORTED_MEDIA_TYPE -> ErrorCodes.UNSUPPORTED_MEDIA_TYPE;
+            default -> status.is5xxServerError() ? ErrorCodes.INTERNAL_ERROR : ErrorCodes.VALIDATION_ERROR;
+        };
+    }
+
+    private static String messageFor(HttpStatus status) {
+        return switch (status) {
+            case NOT_FOUND -> "Recurso no encontrado";
+            case METHOD_NOT_ALLOWED -> "Método HTTP no permitido para este recurso";
+            case NOT_ACCEPTABLE -> "Formato de respuesta no soportado";
+            case UNSUPPORTED_MEDIA_TYPE -> "Tipo de contenido no soportado";
+            default -> status.is5xxServerError() ? "Error interno" : "Solicitud inválida";
+        };
     }
 
     @ExceptionHandler(Exception.class)
