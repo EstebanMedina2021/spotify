@@ -286,19 +286,19 @@ Cubren, entre otros: éxito, validación, 404, duplicado y carrera de creación 
 
 ## Autoría IA
 
-> **Esta sección debe completarla el autor con los porcentajes reales.** Lo que sigue refleja lo que se sabe del proceso; los números no se estiman aquí.
+> Los porcentajes son estimaciones del autor: diseñó la arquitectura y las decisiones, y pidió a la IA que la implementara. Grok generó las Fases 0–4.3 (copia-pega) y Kiro hizo la Fase 5, el frontend, las correcciones, el README y Postman.
 
 Todo el código se produjo con **asistentes de IA** y se revisó por fases. La bitácora detallada (prompts, hallazgos, qué se aceptó y qué se corrigió) está en `AI-LOG.md`.
 
 | Área | Asistida por IA | Decisiones y revisión del autor | % IA / % humano |
 |---|---|---|---|
-| Diseño y documentos de arquitectura | Sí (Claude, auditorías con Claude Code) | Eligió la opción estable (Boot 4.1.3 + Spring AI 2.0.3), cookie HttpOnly con CSRF, sin refresh token ni Redis | `[COMPLETAR]` |
-| Backend: persistencia, auth, CRUD | Sí | Revisó cada fase; reglas de unicidad y aislamiento | `[COMPLETAR]` |
-| Módulo de IA y resiliencia | Sí | Decidió `mock` por defecto y un modelo local en vez de una API con clave | `[COMPLETAR]` |
-| Spotify | Sí | Verificó con su cuenta qué endpoints existen; `genero` como texto libre | `[COMPLETAR]` |
-| Frontend Angular | Sí | Definió el alcance y mantener el reproductor sin audio | `[COMPLETAR]` |
-| Pruebas | Sí | | `[COMPLETAR]` |
-| Revisión final (corrección de defectos) | Sí (Kiro) | Aprobó cada corrección | `[COMPLETAR]` |
+| Diseño y documentos de arquitectura | Sí (Claude en chat, incluidas las auditorías) | Eligió la opción estable (Boot 4.1.3 + Spring AI 2.0.3), cookie HttpOnly con CSRF, sin refresh token ni Redis | 80 / 20 |
+| Backend: persistencia, auth, CRUD | Sí | Revisó cada fase; reglas de unicidad y aislamiento | 95 / 5 |
+| Módulo de IA y resiliencia | Sí | Decidió `mock` por defecto y un modelo local en vez de una API con clave | 90 / 10 |
+| Spotify | Sí | Verificó con su cuenta qué endpoints existen; `genero` como texto libre | 90 / 10 |
+| Frontend Angular | Sí | Definió el alcance y mantener el reproductor sin audio | 90 / 10 |
+| Pruebas | Sí | | 95 / 5 |
+| Revisión final (corrección de defectos) | Sí (Kiro) | Aprobó cada corrección | 95 / 5 |
 
 **Defectos que introdujo la IA y que se detectaron en la revisión** (detalle en `AI-LOG.md`): un prompt que nunca incluía las canciones, un circuit breaker que no impedía llamar al proveedor, motivos de fallback incorrectos con proveedores reales, un modelo de Gemini ya retirado, la protección CSRF que no se emitía, errores 500 ante entradas inválidas, la semilla del usuario demo cargada en todos los perfiles y un ejemplo de secreto JWT aceptado como válido. Los tests con un mock del proveedor no los mostraban; los reveló la prueba con un LLM real y la revisión de código.
 

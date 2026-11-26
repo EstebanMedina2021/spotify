@@ -11,11 +11,11 @@
 | **Candidato** | `[COMPLETAR — nombre completo]` |
 | **Nivel** | ☐ Staff I/II · ☐ Staff III · ☒ Senior |
 | **Fecha** | `[COMPLETAR — fecha de entrega]` |
-| **Asistentes de IA usados** | Claude (Anthropic, chat — diseño y auditoría) · Claude Code (implementación) · Grok (implementación de las Fases 0–4.3 en modo copia-pega, ver `grok/PROMPT-ARRANQUE-GROK.md`) · Kiro (ejecución, revisión final con skills y guía de auditoría, correcciones, Fase 5, README y Postman) |
+| **Asistentes de IA usados** | Claude (Anthropic, chat — diseño y auditoría) · Grok (implementación de las Fases 0–4.3 en modo copia-pega, ver `grok/PROMPT-ARRANQUE-GROK.md`; sustituyó a Claude Code, que no se pudo usar: sin plan de pago no se integraba con el IDE, y el chat de Claude se quedó sin tokens) · Kiro (ejecución, revisión final con skills y guía de auditoría, correcciones, Fase 5, README y Postman) |
 
 **Nota metodológica:** este log se construye de forma **cooperativa con varias IAs**, pero las secciones "Explicación con mis palabras" y "Reflexión final" son **exclusivamente humanas**. La IA puede redactar borradores; la honestidad y el criterio son del candidato.
 
-**Cambio de workflow documentado:** durante el diseño, el rol de las IAs cambió. Inicialmente se planteó que Kiro implementara y Claude revisara. Se cambió a: **Claude Code implementa, el humano revisa en cada fase, Kiro audita al final de forma independiente**. Esta decisión se justifica en §3.4.
+**Cambio de workflow documentado:** durante el diseño, el rol de las IAs cambió. Inicialmente se planteó que Kiro implementara y Claude revisara. Se cambió a: **un asistente generador implementa, el humano revisa en cada fase, Kiro audita al final de forma independiente**. El generador planeado era Claude Code; en la práctica fue **Grok** (ver la nota de §2.5). Esta decisión se justifica en §2.5.
 
 ---
 
@@ -145,9 +145,9 @@ La primera versión duplicaba información entre documentos. La IA detectó el p
 
 ---
 
-### 2.4. Interacción 4 — Auditorías de Claude Code y corrección de decisiones
+### 2.4. Interacción 4 — Auditorías de Claude y corrección de decisiones
 
-**Asistentes:** Claude (chat) + Claude Code (auditoría)
+**Asistente:** Claude (Anthropic, chat). Las seis auditorías se hicieron en el chat; Claude Code no se pudo integrar con el IDE por no tener plan de pago.
 
 **Prompts usados (textuales, resumen de las auditorías):**
 
@@ -160,7 +160,7 @@ La primera versión duplicaba información entre documentos. La IA detectó el p
 
 **Respuesta relevante de la IA (hallazgos consolidados):**
 
-Claude Code entregó **6 informes** con hallazgos que se clasifican en:
+Claude entregó **6 informes** con hallazgos que se clasifican en:
 
 - **Incompatibilidad de versiones:** Spring Boot 4.2.0 **no es compatible** con Spring AI 2.0.x. Boot 4.2.0 requiere Spring AI 2.1.0; Boot 4.1.x requiere Spring AI 2.0.x.
 - **CVE:** Spring Security 7.1.2 tiene CVEs corregidas en 7.1.3. Spring AI 2.0.0/2.0.1 tienen CVE de agosto 2026.
@@ -173,7 +173,7 @@ Claude Code entregó **6 informes** con hallazgos que se clasifican en:
 
 | Hallazgo | Resolución aceptada |
 |---|---|
-| Spring Boot 4.1.3 + Spring AI 2.0.3 | Elegí la **opción B (estabilidad)**: Boot 4.1.3 es compatible con Spring AI 2.0.3 y ambos son estables. La migración futura a Boot 4.2.0 + Spring AI 2.1.0 no es compleja. |
+| Spring Boot 4.1.3 + Spring AI 2.0.3 | Elegí la **opción B (conservadora)**: Boot 4.1.3 es compatible con Spring AI 2.0.3 y ambos son estables. La opción A (Boot 4.2.0, ya GA) no se descartó por inestabilidad, sino por la dependencia de Spring AI 2.1.0 y por preferir la versión menos reciente. La migración futura a Boot 4.2.0 + Spring AI 2.1.0 no es compleja. |
 | Spring Security sin pinear | Dejar que el BOM de Boot gestione la versión para recibir parches de seguridad automáticamente. |
 | Cookie `HttpOnly` + CSRF | **Más seguro.** Acepté el coste de desarrollo adicional (CSRF, CORS con credenciales, `/auth/me`, `/auth/logout`) a cambio de mitigar XSS. |
 | Eliminar el 503 estructural | El fail-fast al arrancar cubre configuraciones incompletas. Una sola conducta: `200` con `fallback=true`. |
@@ -190,14 +190,14 @@ Claude Code entregó **6 informes** con hallazgos que se clasifican en:
 
 | Sugerencia de la IA | Mi decisión | Motivo |
 |---|---|---|
-| Opción A (Boot 4.2.0 + Spring AI 2.1.0) como recomendación principal | **Opción B (Boot 4.1.3 + Spring AI 2.0.3)** | Prefiero estabilidad en ambientes productivos. La migración futura no es compleja. |
+| Opción A (Boot 4.2.0 + Spring AI 2.1.0) como recomendación principal | **Opción B (Boot 4.1.3 + Spring AI 2.0.3)** | Preferí la combinación ya establecida y conservadora en ambientes productivos. Boot 4.2.0 ya es GA desde el 19 de noviembre de 2026, así que la razón no fue inestabilidad de Boot: fue la compatibilidad con Spring AI (4.2.0 exige Spring AI 2.1.0) y mi preferencia por no adoptar la última versión. La migración futura no es compleja. |
 | Token en `localStorage` (más simple) | **Cookie `HttpOnly` + CSRF** | Priorizar seguridad aunque cueste más desarrollo. Coherente con el perfil Senior. |
 | `/spotify/search` como principal | **`/spotify/genres` como principal**, `/search` adicional | El PDF pide "lista de géneros"; `/search` no cumple el requisito literal. |
 | `503` para circuit breaker OPEN >60s | **Eliminado** | Contradice el estado real de Resilience4j, complica la implementación y no aporta valor: el fallback determinista es barato. |
 
 **Explicación con mis palabras:**
 
-Las auditorías fueron reveladoras. Claude Code detectó problemas que yo no vi: la incompatibilidad Spring AI ↔ Boot (que habría hecho fallar el build), el 503 inventado sobre un estado de Resilience4j que no existe como yo lo describía, y el riesgo de `ownerId = username`. Acepté la mayoría de hallazgos, pero **filtre tres decisiones de diseño** con criterio propio: preferí estabilidad sobre novedad (Opción B), seguridad sobre simplicidad (cookie sobre localStorage) y fidelidad al PDF sobre conveniencia (`/genres` como principal). Este filtro es parte del trabajo del Senior: la IA propone, el humano decide.
+Las auditorías fueron reveladoras. Claude detectó problemas que yo no vi: la incompatibilidad Spring AI ↔ Boot (que habría hecho fallar el build), el 503 inventado sobre un estado de Resilience4j que no existe como yo lo describía, y el riesgo de `ownerId = username`. Acepté la mayoría de hallazgos, pero **filtre tres decisiones de diseño** con criterio propio: preferí estabilidad sobre novedad (Opción B), seguridad sobre simplicidad (cookie sobre localStorage) y fidelidad al PDF sobre conveniencia (`/genres` como principal). Este filtro es parte del trabajo del Senior: la IA propone, el humano decide.
 
 ---
 
@@ -211,17 +211,19 @@ Las auditorías fueron reveladoras. Claude Code detectó problemas que yo no vi:
 
 **Respuesta relevante de la IA:**
 
-- Confirmó el cambio: **Claude Code genera, humano revisa en cada fase, Kiro audita al final**.
+- Confirmó el cambio: **Claude Code genera (plan), humano revisa en cada fase, Kiro audita al final**.
 - Ajustó el `AI-LOG` para reflejar este workflow (esta sección).
 - Preparó un kit de transferencia: `PROMPT-ARRANQUE.md`, `PROMPT-FASE-0` a `PROMPT-FASE-7`, `docs/AUDITORIA-KIRO.md`.
 
 **¿Qué acepté y por qué?**
 
-- El nuevo workflow. Mantiene el rol de Kiro como revisor independiente (más valioso que como generador para el entregable) y concentra la generación en Claude Code con revisión humana por fase.
+- El nuevo workflow. Mantiene el rol de Kiro como revisor independiente (más valioso que como generador para el entregable) y concentra la generación en un solo asistente con revisión humana por fase (en el plan, Claude Code).
 
 **Explicación con mis palabras:**
 
 Inicialmente se pensó en Kiro como generador y Claude como revisor. Cambié a que Claude Code genere porque su contexto de auditoría ya estaba maduro, y porque tener un **revisor independiente final (Kiro)** sobre el código ya generado y auditado por mí es más valioso que tener dos IAs generando en paralelo. Es una decisión de arquitectura del proceso, no del software.
+
+**Nota posterior (qué pasó realmente):** Claude Code no se pudo usar. No tenía plan de pago para integrarlo con el IDE y el chat de Claude se quedó sin tokens. La generación de las Fases 0–4.3 la hizo **Grok** en modo copia-pega (`grok/PROMPT-ARRANQUE-GROK.md`), con el mismo esquema: yo pegaba el contexto de cada fase, revisaba el resultado y Kiro auditó al final.
 
 ---
 
@@ -359,7 +361,7 @@ Prompt de arranque enviado a Grok en modo copia-pega (`grok/PROMPT-ARRANQUE-GROK
 >
 > **Antes de la Fase 0:** confirma que entendiste el modo copia-pega, resume las 6 decisiones clave en 6 bullets y espera mi primer mensaje de fase con el contexto pegado.
 
-`[PEGAR TEXTUALMENTE — los mensajes de las Fases 4.1, 4.2 y 4.3 (contexto pegado + instrucción) no están en el repositorio. Solo el autor los tiene.]`
+**Mensajes de fase:** el autor no conservó los mensajes literales de las Fases 4.1, 4.2 y 4.3 (contexto pegado + instrucción). El esquema fue el definido en el prompt de arranque: pegar el contexto de la fase en Grok y copiar los archivos generados al proyecto. No se reconstruyen aquí para no inventarlos.
 
 **Respuesta / código relevante de la IA (fragmentos que luego se corrigieron):**
 
@@ -417,7 +419,7 @@ Cada corrección está en la tabla de §2.7 y en §2.6. Resumen de lo corregido 
 
 **Prompt(s) usado(s):**
 
-1. El prompt de arranque de Grok (ver §3) y los mensajes de fase `[PEGAR — Fase 4.3: instrucción para generar los clientes Gemini/Ollama]`.
+1. El prompt de arranque de Grok (ver §3) y el mensaje de la Fase 4.3 (generar los clientes Gemini/Ollama), que no se conservó textualmente.
 2. **Revisión externa de la propuesta 4.3** (hecha en el chat de Claude y pegada por el autor a Kiro). Texto relevante, resumido sin cambiar su contenido:
 
 | # | Problema señalado | Gravedad |
@@ -465,7 +467,7 @@ Las correcciones de código las aplicó Kiro **a petición y con aprobación del
 - **Verificó con su cuenta** qué endpoints de Spotify existen (404 / 403 / 200).
 - **Decisiones de diseño y alcance:** modelo local (Ollama) en lugar de una API con clave, para no exponer datos; no paginar `GET /lists`; `genero` como texto libre; reproductor sin audio; qué hacer con el AI-LOG.
 
-`[CONFIRMAR — ¿hizo el autor alguna edición manual de código durante las fases 0–4.3 (por ejemplo al pegar los archivos de Grok y resolver errores de compilación)? Si es así, listarla aquí con su motivo.]`
+**Ediciones manuales del autor (Fases 0–4.3):** ninguna. Cada error que apareció al compilar o correr las pruebas se corrigió pidiéndoselo a la IA, a partir de la salida de la terminal.
 
 ---
 
@@ -473,7 +475,7 @@ Las correcciones de código las aplicó Kiro **a petición y con aprobación del
 
 **Prompt(s) usado(s):**
 
-`[PEGAR — mensajes enviados a Grok para generar los tests de las Fases 3, 4.1 y 4.2. No están en el repositorio.]`
+**Cómo se generaron y depuraron los tests de las Fases 3, 4.1 y 4.2:** Grok los generó. El autor no conserva los mensajes literales. El proceso fue iterativo: ejecutar las pruebas, copiar la salida de la terminal con los fallos a Grok y aplicar su corrección, repitiendo hasta que pasaran. No hubo edición manual de los tests.
 
 Los tests posteriores los pidió el autor a Kiro con las instrucciones de §2.6 y §2.7 («Si haz las correcciones necesarias», «Si, comienza por ahí», etc.).
 
@@ -547,7 +549,7 @@ Total actual: backend **82 unitarias y 91 de integración**; frontend **26**.
 
 4. **La IA propuso un `503` con circuit breaker OPEN >60s** que no corresponde al modelo real de Resilience4j. Solo una auditoría externa lo detectó. **Lección:** la IA puede inventar detalles plausibles que no existen en la librería.
 
-5. **La IA no detectó que el endpoint de Spotify de géneros probablemente está obsoleto** para apps nuevas desde feb 2026. Fue un hallazgo de Claude Code en auditoría. **Lección:** el conocimiento de la IA tiene fecha de corte; los endpoints externos cambian.
+5. **La IA no detectó que el endpoint de Spotify de géneros probablemente está obsoleto** para apps nuevas desde feb 2026. Fue un hallazgo de Claude (chat) en auditoría. **Lección:** el conocimiento de la IA tiene fecha de corte; los endpoints externos cambian.
 
 **Fase de implementación** *(borrador preparado por Kiro a partir de las revisiones; el autor debe confirmarlo y ampliarlo con su propia experiencia)*:
 
@@ -577,7 +579,7 @@ Total actual: backend **82 unitarias y 91 de integración**; frontend **26**.
 
 **Fase de implementación (pendiente):**
 
-`[COMPLETAR — qué NO delegaría a Claude Code durante la implementación y por qué, con ejemplos concretos. Ejemplo: "No delegaría la decisión de qué excepciones capturar en el GlobalExceptionHandler; la IA tiende a capturar Exception genérica."]`
+`[COMPLETAR — qué NO delegaría a la IA (Grok/Kiro) durante la implementación y por qué, con ejemplos concretos. Ejemplo: "No delegaría la decisión de qué excepciones capturar en el GlobalExceptionHandler; la IA tiende a capturar Exception genérica."]`
 
 ### 6.3. Autoría
 
@@ -589,21 +591,21 @@ Total actual: backend **82 unitarias y 91 de integración**; frontend **26**.
 | Diseño y arquitectura | 70% | 30% | IA propuso; yo filtré sobre-ingeniería y reforcé convenciones |
 | Documentación `01`–`05` | 85% | 15% | IA redactó; yo detecté confusión y pedí reescritura; yo definí convenciones |
 | `DECISIONES-FINALES.md` | 75% | 25% | IA consolidó; yo tomé las 4 decisiones clave (Opción B, cookie, `/genres`, monorepo) |
-| Audiciones (Claude Code) | 95% | 5% | IA identificó hallazgos; yo filtré los que aplicaban |
-| `AI-LOG.md` | 50% | 50% | IA redactó borrador; yo completaré durante implementación |
+| Auditorías (Claude, chat) | 95% | 5% | IA identificó hallazgos; yo filtré los que aplicaban |
+| `AI-LOG.md` | 50% | 50% | IA redactó borrador; el autor aporta las partes humanas (explicaciones y reflexión final) |
 | Código | — | — | Ver la tabla final: todo el código se generó con IA y se revisó por fases |
 
-**Estado final (a completar al entregar):**
+**Estado final** (estimación del autor: diseñó la arquitectura y pidió a la IA implementarla):
 
 | Módulo | % IA | % Humano | Comentario |
 |---|---|---|---|
-| CRUD `/lists` | `[COMPLETAR]` | `[COMPLETAR]` | |
-| Autenticación (cookie + CSRF) | `[COMPLETAR]` | `[COMPLETAR]` | |
-| Cliente IA + fallback | `[COMPLETAR]` | `[COMPLETAR]` | |
-| Spotify | `[COMPLETAR]` | `[COMPLETAR]` | |
-| Frontend Angular | `[COMPLETAR]` | `[COMPLETAR]` | |
-| Tests | `[COMPLETAR]` | `[COMPLETAR]` | |
-| Documentación (`README`, `AI-LOG`) | `[COMPLETAR]` | `[COMPLETAR]` | |
+| CRUD `/lists` | 95% | 5% | Grok generó; el autor revisó por fase |
+| Autenticación (cookie + CSRF) | 95% | 5% | Grok generó; Kiro corrigió CSRF y cookie |
+| Cliente IA + fallback | 90% | 10% | El autor decidió el modelo local y el fallback; Grok y Kiro implementaron |
+| Spotify | 90% | 10% | Kiro implementó; el autor verificó los endpoints con su cuenta |
+| Frontend Angular | 90% | 10% | Kiro implementó; el autor definió el alcance |
+| Tests | 95% | 5% | Grok y Kiro; el autor ejecutó y devolvió los fallos a la IA |
+| Documentación (`README`, `AI-LOG`) | 85% | 15% | Kiro y Claude redactaron; el autor revisó |
 
 **Nota de honestidad:** los porcentajes deben reflejar el trabajo real. Si la IA generó el 90% de una clase pero yo reescribí el 40% de sus líneas, el porcentaje humano debe reflejar eso. El evaluador valora la honestidad, no el porcentaje.
 
@@ -611,7 +613,7 @@ Total actual: backend **82 unitarias y 91 de integración**; frontend **26**.
 
 ## 7. Observaciones sobre el uso de IA en este proyecto
 
-- **Tres asistentes, tres roles:** Claude (chat) para diseño y auditoría conceptual, Claude Code para generación con revisión humana por fase, Kiro como revisor independiente final. Cada rol fue explícito y documentado.
+- **Tres asistentes, tres roles:** Claude (chat) para diseño y auditoría conceptual, Grok para generación (Fases 0–4.3) con revisión humana por fase, Kiro como revisor independiente final y autor de la Fase 5, el frontend, el README y Postman. Cada rol fue explícito y documentado.
 - **La IA propone, el humano decide:** en cada fase de diseño hubo al menos una decisión donde rechacé o filtré la propuesta de la IA con justificación técnica.
 - **La auditoría externa fue clave:** la incompatibilidad Spring Boot ↔ Spring AI, el 503 inventado y el endpoint de Spotify obsoleto fueron detectados por auditoría, no por el diseño inicial. Esto confirma que un revisor independiente (humano o IA) es necesario después de la generación.
 - **Prompting efectivo:** los mejores resultados se obtuvieron con prompts específicos ("actúa como X", "audita Y específicamente", "critica Z como evaluador Senior") en lugar de "genera todo el código". El prompting por rol y por tarea superó al prompting genérico.
