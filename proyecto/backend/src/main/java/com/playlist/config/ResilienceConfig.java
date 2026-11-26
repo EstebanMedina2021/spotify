@@ -1,20 +1,23 @@
 package com.playlist.config;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.timelimiter.TimeLimiter;
-import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import io.github.resilience4j.timelimiter.TimeLimiterRegistry;
-import java.time.Duration;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * The AI client's resilience settings live in application.yml under
+ * {@code resilience4j.*.instances.aiClient}; the Resilience4j starter builds the registries from
+ * there and these beans just pick the "aiClient" instance. Nothing is hardcoded here.
+ */
 @Configuration
 public class ResilienceConfig {
+
+    static final String AI_CLIENT = "aiClient";
 
     @Bean(destroyMethod = "shutdown")
     public ScheduledExecutorService aiTimeoutScheduler() {
@@ -22,23 +25,12 @@ public class ResilienceConfig {
     }
 
     @Bean
-    public TimeLimiter aiTimeLimiter(
-            @Value("${app.ai.timeout-seconds:5}") long timeoutSeconds) {
-        TimeLimiterConfig config = TimeLimiterConfig.custom()
-                .timeoutDuration(Duration.ofSeconds(timeoutSeconds))
-                .cancelRunningFuture(true)
-                .build();
-        return TimeLimiterRegistry.of(config).timeLimiter("aiClient");
+    public TimeLimiter aiTimeLimiter(TimeLimiterRegistry registry) {
+        return registry.timeLimiter(AI_CLIENT);
     }
 
     @Bean
-    public CircuitBreaker aiCircuitBreaker() {
-        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
-                .slidingWindowSize(10)
-                .failureRateThreshold(50)
-                .waitDurationInOpenState(Duration.ofSeconds(30))
-                .permittedNumberOfCallsInHalfOpenState(3)
-                .build();
-        return CircuitBreakerRegistry.of(config).circuitBreaker("aiClient");
+    public CircuitBreaker aiCircuitBreaker(CircuitBreakerRegistry registry) {
+        return registry.circuitBreaker(AI_CLIENT);
     }
 }

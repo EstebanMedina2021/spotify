@@ -132,7 +132,7 @@ class SecurityIT {
         String accessToken = loginAndGetCookie();
 
         // 1. Obtener CSRF token (materializa la cookie XSRF-TOKEN)
-        MvcResult csrfResult = mockMvc.perform(get("/auth/csrf")
+        MvcResult csrfResult = mockMvc.perform(get("/auth/me")
                         .cookie(new Cookie("access_token", accessToken)))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -151,6 +151,58 @@ class SecurityIT {
                         .content("{}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.codigo").value("CSRF_INVALID"));
+    }
+
+    @Test
+    void postWithMismatchedCsrfHeader_returns403CsrfInvalid() throws Exception {
+        String accessToken = loginAndGetCookie();
+
+        mockMvc.perform(post("/lists")
+                        .cookie(new Cookie("access_token", accessToken), new Cookie("XSRF-TOKEN", "real-token"))
+                        .header("X-XSRF-TOKEN", "forged-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"x\",\"canciones\":[]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("CSRF_INVALID"));
+    }
+
+    @Test
+    void postWithoutAnyCsrfToken_returns403CsrfInvalid() throws Exception {
+        String accessToken = loginAndGetCookie();
+
+        mockMvc.perform(post("/lists")
+                        .cookie(new Cookie("access_token", accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"x\",\"canciones\":[]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("CSRF_INVALID"));
+    }
+
+    @Test
+    void postWithBlankCsrfCookieAndHeader_returns403CsrfInvalid() throws Exception {
+        String accessToken = loginAndGetCookie();
+
+        // Two empty strings are "equal", but they are not a token
+        mockMvc.perform(post("/lists")
+                        .cookie(new Cookie("access_token", accessToken), new Cookie("XSRF-TOKEN", ""))
+                        .header("X-XSRF-TOKEN", "")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"x\",\"canciones\":[]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("CSRF_INVALID"));
+    }
+
+    @Test
+    void deleteWithoutCsrfToken_returns403CsrfInvalid() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/lists/cualquiera")
+                        .cookie(new Cookie("access_token", loginAndGetCookie())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("CSRF_INVALID"));
+    }
+    @Test
+    void csrfHelperEndpoint_doesNotExistAnymore() throws Exception {
+        mockMvc.perform(get("/auth/csrf").cookie(new Cookie("access_token", loginAndGetCookie())))
+                .andExpect(status().isNotFound());
     }
 
     @Test

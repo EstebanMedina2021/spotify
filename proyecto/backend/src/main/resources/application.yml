@@ -81,7 +81,8 @@ resilience4j:
   timelimiter:
     instances:
       aiClient:
-        timeout-duration: 5s
+        # same value as the HTTP clients' timeout (03 5.1: HTTP timeout <= limiter)
+        timeout-duration: ${app.ai.timeout-seconds:5}s
   circuitbreaker:
     instances:
       aiClient:

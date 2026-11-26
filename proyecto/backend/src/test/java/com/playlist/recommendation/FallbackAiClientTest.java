@@ -8,6 +8,7 @@ import com.playlist.recommendation.exception.AiProviderAuthException;
 import com.playlist.recommendation.exception.AiProviderException;
 import com.playlist.recommendation.exception.AiProviderTimeoutException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.net.SocketTimeoutException;
@@ -42,12 +43,27 @@ class FallbackAiClientTest {
         scheduler.shutdownNow();
     }
 
+
+    /** Same values as resilience4j.circuitbreaker.instances.aiClient in application.yml (checked by ResilienceConfigIT). */
+    private static CircuitBreaker newBreaker() {
+        return CircuitBreaker.of("probe", CircuitBreakerConfig.custom()
+                .slidingWindowSize(10)
+                .failureRateThreshold(50)
+                .waitDurationInOpenState(Duration.ofSeconds(30))
+                .permittedNumberOfCallsInHalfOpenState(3)
+                .build());
+    }
+
+    private static TimeLimiter timeLimiter(Duration timeout) {
+        return TimeLimiter.of("probe", TimeLimiterConfig.custom()
+                .timeoutDuration(timeout).cancelRunningFuture(true).build());
+    }
     private FallbackAiClient clientFor(AiRecommendationClient delegate, TimeLimiter timeLimiter, CircuitBreaker breaker) {
         return new FallbackAiClient(delegate, catalog, timeLimiter, breaker, scheduler);
     }
 
     private FallbackAiClient clientFor(AiRecommendationClient delegate) {
-        return clientFor(delegate, config.aiTimeLimiter(5), config.aiCircuitBreaker());
+        return clientFor(delegate, timeLimiter(Duration.ofSeconds(5)), newBreaker());
     }
 
     private RecommendationResult recommend(FallbackAiClient client) throws Exception {
@@ -125,7 +141,7 @@ class FallbackAiClientTest {
         TimeLimiter shortLimit = TimeLimiter.of("probe", TimeLimiterConfig.custom()
                 .timeoutDuration(Duration.ofMillis(150)).cancelRunningFuture(true).build());
         FallbackAiClient client = clientFor((songs, version) -> new CompletableFuture<>(),
-                shortLimit, config.aiCircuitBreaker());
+                shortLimit, newBreaker());
 
         // Act
         RecommendationResult result = recommend(client);
@@ -149,13 +165,13 @@ class FallbackAiClientTest {
     @Test
     void openCircuit_doesNotCallTheProvider_andReportsCircuitOpen() throws Exception {
         // Arrange
-        CircuitBreaker breaker = config.aiCircuitBreaker();
+        CircuitBreaker breaker = newBreaker();
         breaker.transitionToOpenState();
         AtomicInteger providerCalls = new AtomicInteger();
         FallbackAiClient client = clientFor((songs, version) -> {
             providerCalls.incrementAndGet();
             return CompletableFuture.completedFuture(RecommendationResult.ok(List.of(), "X", "v1"));
-        }, config.aiTimeLimiter(5), breaker);
+        }, timeLimiter(Duration.ofSeconds(5)), breaker);
 
         // Act
         RecommendationResult result = recommend(client);
@@ -168,12 +184,12 @@ class FallbackAiClientTest {
     @Test
     void repeatedFailures_openTheCircuit_andStopCallingTheProvider() throws Exception {
         // Arrange: window of 10 calls, 50 % threshold (ResilienceConfig)
-        CircuitBreaker breaker = config.aiCircuitBreaker();
+        CircuitBreaker breaker = newBreaker();
         AtomicInteger providerCalls = new AtomicInteger();
         FallbackAiClient client = clientFor((songs, version) -> {
             providerCalls.incrementAndGet();
             return CompletableFuture.failedFuture(new AiProviderException("down"));
-        }, config.aiTimeLimiter(5), breaker);
+        }, timeLimiter(Duration.ofSeconds(5)), breaker);
 
         // Act
         for (int i = 0; i < 10; i++) {

@@ -5,6 +5,7 @@ import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.playlist.auth.CookieBearerTokenResolver;
 import com.playlist.auth.JwtProperties;
 import com.playlist.common.ErrorResponse;
+import com.playlist.security.CsrfValidationFilter;
 import com.playlist.security.CustomAccessDeniedHandler;
 import com.playlist.security.CustomAuthenticationEntryPoint;
 import java.nio.charset.StandardCharsets;
@@ -79,7 +80,9 @@ public class SecurityConfig {
                         .csrfTokenRequestHandler(csrfTokenRequestHandler())
                         // Stateless: default strategy clears the XSRF cookie after each authenticated request.
                         .sessionAuthenticationStrategy((authentication, request, response) -> { })
-                        .ignoringRequestMatchers("/auth/login", "/auth/logout", "/auth/me")
+                        // Spring's CsrfFilter is skipped for requests whose cookie token the resource server resolves, so the
+                        // real enforcement is CsrfValidationFilter (see its Javadoc). Same exempt list for both.
+                        .ignoringRequestMatchers(CsrfValidationFilter.EXEMPT_PATH_PATTERNS)
                 )
                 // The CSRF token is deferred; reading it forces the XSRF-TOKEN cookie to be written.
                 .addFilterAfter(new OncePerRequestFilter() {
@@ -99,7 +102,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/auth/me").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/auth/csrf").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()
                 )

@@ -24,7 +24,6 @@ public class AuthService {
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
-    private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final LoginAttemptLimiter loginAttemptLimiter;
 
@@ -41,10 +40,9 @@ public class AuthService {
         }
     }
 
-    public MeResponse me(UUID userId, String token) {
+    public MeResponse me(UUID userId, Instant expiresAt) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadCredentialsException("User not found"));
-        Instant expiresAt = jwtService.extractExpiration(token);
         return new MeResponse(user.getUsername(), expiresAt.toString());
     }
 }

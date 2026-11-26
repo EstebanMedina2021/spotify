@@ -158,7 +158,7 @@ class PlaylistControllerIT {
                 .andReturn();
         Cookie access = loginResult.getResponse().getCookie("access_token");
 
-        MvcResult csrfResult = mockMvc.perform(get("/auth/csrf").cookie(access))
+        MvcResult csrfResult = mockMvc.perform(get("/auth/me").cookie(access))
                 .andExpect(status().isOk())
                 .andReturn();
         Cookie xsrf = csrfResult.getResponse().getCookie("XSRF-TOKEN");

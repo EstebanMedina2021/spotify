@@ -3,9 +3,7 @@ package com.playlist.auth;
 import com.playlist.auth.dto.LoginRequest;
 import com.playlist.auth.dto.LoginResponse;
 import com.playlist.auth.dto.MeResponse;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.env.Environment;
@@ -16,14 +14,12 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.oauth2.jwt.Jwt;
-import java.util.Map;
-import org.springframework.security.web.csrf.CsrfToken;
 
 @RestController
 @RequestMapping("/auth")
@@ -35,28 +31,15 @@ public class AuthController {
     private final JwtProperties jwtProperties;
     private final CookieFactory cookieFactory;
     private final Environment environment;
-    private final CookieBearerTokenResolver tokenResolver;
 
-    
-    @GetMapping("/csrf")
-    public ResponseEntity<Map<String, String>> csrf(CsrfToken token) {
-        return ResponseEntity.ok(Map.of(
-                "token", token.getToken(),
-                "headerName", token.getHeaderName()
-        ));
-    }
-    
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         AuthenticatedUser user = authService.authenticate(request.username(), request.password());
-        String token = jwtService.generateToken(user);
-        Instant expiresAt = Instant.now().plusSeconds(jwtProperties.expirationMinutes() * 60);
+        IssuedToken token = jwtService.generateToken(user);
         long maxAge = jwtProperties.expirationMinutes() * 60;
-        boolean secure = isSecure();
 
-        ResponseCookie cookie = cookieFactory.createAccessTokenCookie(token, maxAge, secure);
-
-        LoginResponse body = new LoginResponse(user.getUsername(), expiresAt.toString());
+        ResponseCookie cookie = cookieFactory.createAccessTokenCookie(token.value(), maxAge, isSecure());
+        LoginResponse body = new LoginResponse(user.getUsername(), token.expiresAt().toString());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
@@ -65,21 +48,20 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout() {
-        boolean secure = isSecure();
-        ResponseCookie cookie = cookieFactory.clearAccessTokenCookie(secure);
+        ResponseCookie cookie = cookieFactory.clearAccessTokenCookie(isSecure());
         return ResponseEntity.status(HttpStatus.NO_CONTENT)
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .build();
     }
 
+    /** Also the way for a client to obtain the first XSRF-TOKEN cookie (written on every request). */
     @GetMapping("/me")
-    public ResponseEntity<MeResponse> me(Authentication authentication, HttpServletRequest request) {
+    public ResponseEntity<MeResponse> me(Authentication authentication) {
         if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
             throw new BadCredentialsException("No autenticado");
         }
-        UUID userId = UUID.fromString(jwt.getSubject());
-        String token = tokenResolver.resolve(request);
-        MeResponse response = authService.me(userId, token);
+        // The token was already validated and decoded by the resource server: reuse its claims.
+        MeResponse response = authService.me(UUID.fromString(jwt.getSubject()), jwt.getExpiresAt());
         return ResponseEntity.ok(response);
     }
 
