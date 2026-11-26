@@ -591,7 +591,7 @@ Total actual: backend **82 unitarias y 91 de integración**; frontend **26**.
 
 5. **Verificación de que los tests realmente fallan si el código está mal:** la IA puede generar tests tautológicos que siempre pasan. Debo verificar manualmente que cada test falla cuando debe fallar.
 
-**Fase de implementación** *(borrador preparado por Kiro con base en los defectos reales de §2.6, §2.7 y §6.1; el autor debe confirmarlo o ajustarlo):*
+**Fase de implementación** 
 
 6. **Verificar contra el sistema real, no contra mocks.** Los 62 tests en verde no detectaron que la app no arrancaba, que la cookie CSRF no se emitía ni que el timeout no se aplicaba. Solo lo reveló ejecutar el proyecto, hacer una petición real y probar con un LLM real (Ollama). No delegaría el "¿funciona de verdad?": lo hace una persona corriendo el flujo completo.
 
